@@ -1,0 +1,47 @@
+
+/* DASS operator responsive layout patch.
+   Scoped to the operator route via the .dass-operator-route class. */
+
+@media (max-width: 640px) {
+  .dass-operator-route header {
+    display: grid !important;
+    grid-template-columns: 1fr !important;
+    align-items: stretch !important;
+    gap: 14px !important;
+  }
+
+  .dass-operator-route header > div:last-child {
+    display: grid !important;
+    grid-template-columns: 1fr 1fr !important;
+    width: 100% !important;
+    gap: 8px !important;
+  }
+
+  .dass-operator-route header > div:last-child > a,
+  .dass-operator-route header > div:last-child > form,
+  .dass-operator-route header > div:last-child > form > button {
+    width: 100% !important;
+    box-sizing: border-box !important;
+  }
+
+  .dass-operator-route header > div:last-child > a,
+  .dass-operator-route header > div:last-child > form > button {
+    display: flex !important;
+    align-items: center !important;
+    justify-content: center !important;
+    min-height: 44px !important;
+    padding: 10px 12px !important;
+    text-align: center !important;
+  }
+
+  .dass-operator-route header + section {
+    margin-top: 18px !important;
+    clear: both !important;
+  }
+}
+
+@media (max-width: 380px) {
+  .dass-operator-route header > div:last-child {
+    grid-template-columns: 1fr !important;
+  }
+}

@@ -1,6 +1,7 @@
 'use client'
 
 import { useEffect } from 'react'
+import './operator-mobile.css'
 
 export default function OperatorLayout({
   children,
@@ -20,5 +21,5 @@ export default function OperatorLayout({
     }
   }, [])
 
-  return <>{children}</>
+  return <div className="dass-operator-route">{children}</div>
 }
