@@ -37,13 +37,20 @@ export default function Home() {
       const L = await import('leaflet');
       await import('leaflet/dist/leaflet.css');
       if (cancelled || mapRef.current) return;
+
       const map = L.map('map', { zoomControl: false, attributionControl: true }).setView([54.05, -2.7], 6);
       mapRef.current = map;
+
       L.control.zoom({ position: 'bottomleft' }).addTo(map);
       L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
         maxZoom: 12,
         attribution: '&copy; OpenStreetMap contributors'
       }).addTo(map);
+
+      map.on('click', () => {
+        setSelected(null);
+        layersRef.current.forEach((l) => l.setStyle({ weight: 2 }));
+      });
 
       layersRef.current = areas.map((a) => {
         const layer = L.polygon(a.coords, {
@@ -53,13 +60,17 @@ export default function Home() {
           fillOpacity: a.status === 'ACTIVE' ? 0.28 : 0.19,
           dashArray: a.status === 'UNVERIFIED' ? '7 6' : undefined
         }).addTo(map);
+
         layer.bindTooltip(a.code, { sticky: true, className: 'dass-label', direction: 'top' });
-        layer.on('click', () => {
+
+        layer.on('click', (event) => {
+          L.DomEvent.stopPropagation(event);
           layersRef.current.forEach((l) => l.setStyle({ weight: 2 }));
           layer.setStyle({ weight: 4 });
           layer.bringToFront();
           setSelected(a);
         });
+
         return layer;
       });
     })();
@@ -72,9 +83,15 @@ export default function Home() {
     };
   }, []);
 
+  const closePanel = () => {
+    setSelected(null);
+    layersRef.current.forEach((l) => l.setStyle({ weight: 2 }));
+  };
+
   return (
     <div className="app">
       <div className="demo-banner">DASS ALPHA 0.1 · DEMONSTRATION ONLY · NOT FOR OPERATIONAL USE OR FLIGHT PLANNING</div>
+
       <header>
         <div className="brand">
           <div className="mark" aria-hidden="true" />
@@ -87,14 +104,21 @@ export default function Home() {
         </nav>
       </header>
 
-      <main className="workspace">
+      <main className={`workspace ${selected ? 'has-selection' : ''}`}>
         <section className="mapwrap">
           <div id="map" className="map" />
+
           <div className="map-overlay">
             <div className="status-card">
               <div className="eyebrow">Demonstration network</div>
-              <div className="status-row"><span className="pulse" /><strong>4 areas reporting</strong><span className="sep">·</span><span className="muted">Updated live</span></div>
+              <div className="status-row">
+                <span className="pulse" />
+                <strong>4 areas reporting</strong>
+                <span className="sep">·</span>
+                <span className="muted">Updated live</span>
+              </div>
             </div>
+
             <div className="legend">
               <div className="legend-item"><span className="swatch red" />Active</div>
               <div className="legend-item"><span className="swatch green" />Inactive</div>
@@ -104,25 +128,46 @@ export default function Home() {
           </div>
         </section>
 
-        <aside>
-          <div className="side-title"><div><div className="eyebrow">Airspace information</div><h2>{selected ? 'Selected area' : 'Select an area'}</h2></div><div className="tag">ALPHA</div></div>
+        <aside className={selected ? 'mobile-open' : ''} onClick={(e) => e.stopPropagation()}>
+          <div className="side-title">
+            <div>
+              <div className="eyebrow">Airspace information</div>
+              <h2>{selected ? 'Selected area' : 'Select an area'}</h2>
+            </div>
+            <div className="side-actions">
+              <div className="tag">ALPHA</div>
+              {selected && (
+                <button className="close-panel" onClick={closePanel} aria-label="Close airspace information">×</button>
+              )}
+            </div>
+          </div>
+
           {!selected ? (
-            <div className="empty"><div className="radar" /><p>Select a demonstration Danger Area on the map to inspect its promulgated information and reported DASS operational status.</p></div>
+            <div className="empty">
+              <div className="radar" />
+              <p>Select a demonstration Danger Area on the map to inspect its promulgated information and reported DASS operational status.</p>
+            </div>
           ) : (
             <div className="details show">
               <div className="area-code">{selected.code}</div>
               <div className="area-name">{selected.name}</div>
+
               <div className="live">
-                <div className="live-top"><div className="live-label">Reported operational status</div><div className={`badge ${statusClass}`}>{selected.status}</div></div>
+                <div className="live-top">
+                  <div className="live-label">Reported operational status</div>
+                  <div className={`badge ${statusClass}`}>{selected.status}</div>
+                </div>
                 <div className="time">{selected.time}</div>
                 <div className="small">{selected.meta}</div>
               </div>
+
               <div className="data-grid">
                 <div className="data"><span>Promulgated period</span><strong>{selected.period}</strong></div>
                 <div className="data"><span>Vertical limits</span><strong>{selected.limits}</strong></div>
                 <div className="data"><span>Authority</span><strong>{selected.authority}</strong></div>
                 <div className="data"><span>Airspace</span><strong>{selected.airspace}</strong></div>
               </div>
+
               <div className="notice"><strong>Demonstration data.</strong> DASS Alpha does not supersede the UK AIP, NOTAM, ATC instructions or established Danger Area crossing procedures.</div>
               <div className="source">Status source: DASS demonstration dataset · Geometry is illustrative and deliberately does not represent authoritative UK airspace boundaries.</div>
             </div>
