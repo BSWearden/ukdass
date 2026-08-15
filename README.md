@@ -1,37 +1,52 @@
-# UK DASS Alpha 0.1
+# DASS Alpha 0.2 — Operator Authentication
 
-UK Dynamic Airspace Status System — demonstration prototype.
+This package adds the first Range Operator authentication layer to the existing `ukdass` Next.js project.
 
-## Safety status
-This repository contains demonstration software only. It is **not for operational use or flight planning** and does not supersede the UK AIP, NOTAM, ATC instructions, or established Danger Area crossing procedures.
+## Replace / add these files
 
-## Run locally
-```bash
-npm install
-npm run dev
-```
-Then open http://localhost:3000
+Copy the contents of this package into the root of your local `ukdass` repository, preserving the folder structure.
 
-## Upload to GitHub
-1. Open the `BSWearden/ukdass` repository.
-2. Choose **Add file → Upload files**.
-3. Upload the contents of this project folder (not the enclosing folder itself).
-4. Commit directly to `main` with the message `Add DASS Alpha 0.1`.
+It will:
+- replace `package.json`
+- add `proxy.ts`
+- add `lib/supabase/client.ts`
+- add `lib/supabase/server.ts`
+- add `lib/supabase/proxy.ts`
+- add `app/operator/login/page.tsx`
+- add `app/operator/page.tsx`
+- add `app/operator/actions.ts`
 
-## Import to Vercel
-1. Sign in to Vercel.
-2. Choose **Add New → Project**.
-3. Import `BSWearden/ukdass` from GitHub.
-4. Vercel should detect **Next.js** automatically.
-5. Leave the root directory as `./` and use the default build settings.
-6. Click **Deploy**.
+Do not delete your existing `app/page.tsx`, `app/globals.css`, `app/layout.tsx`, or public assets.
 
-Once deployed, Vercel will provide a `.vercel.app` URL. After verification, connect `ukdass.org` in **Project Settings → Domains**.
+## Vercel environment variables
 
-## Next development steps
-- Supabase database integration
-- Range operator authentication
-- Area-specific permissions
-- Live activate/deactivate controls
-- Audit history
-- Status expiry / unverified state
+Add the two variables listed in `ENVIRONMENT-VARIABLES.txt` to:
+Vercel > ukdass project > Settings > Environment Variables
+
+Apply them to Production, Preview, and Development.
+
+## Supabase setting
+
+In Supabase Dashboard:
+Authentication > Providers > Email
+
+Disable public/new-user sign-ups if the dashboard exposes an "Allow new users to sign up" / signup enable toggle.
+
+The DASS application itself contains no sign-up UI.
+
+## Operator account provisioning
+
+For Alpha testing, create/invite an operator from:
+Supabase Dashboard > Authentication > Users
+
+After a user exists, the DASS database also needs an `operator_profiles` row and a DA permission assignment. We will do that together after the login page is deployed.
+
+## GitHub / Vercel
+
+Commit:
+`Add Alpha 0.2 operator authentication`
+
+Push origin. Vercel should redeploy automatically.
+
+Then test:
+https://ukdass.org/operator
