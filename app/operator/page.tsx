@@ -2,47 +2,355 @@ import { redirect } from 'next/navigation'
 import { createClient } from '../../lib/supabase/server'
 import { logout } from './actions'
 
+type PermissionRow = {
+  can_change_status: boolean
+  danger_areas: {
+    id: string
+    code: string
+    name: string
+    lower_limit: string
+    upper_limit: string
+    promulgated_period: string
+    authority: string
+    airspace_when_inactive: string
+    current_status: 'ACTIVE' | 'INACTIVE' | 'UNVERIFIED'
+    status_updated_at: string | null
+  } | null
+}
+
+function statusStyle(status: string) {
+  if (status === 'ACTIVE') {
+    return {
+      color: '#ff828b',
+      border: '1px solid rgba(255,90,100,.35)',
+      background: 'rgba(255,90,100,.14)',
+    }
+  }
+
+  if (status === 'INACTIVE') {
+    return {
+      color: '#7be3a9',
+      border: '1px solid rgba(79,209,139,.32)',
+      background: 'rgba(79,209,139,.13)',
+    }
+  }
+
+  return {
+    color: '#ffd07d',
+    border: '1px solid rgba(255,186,74,.34)',
+    background: 'rgba(255,186,74,.13)',
+  }
+}
+
+function formatUtc(value: string | null) {
+  if (!value) return 'No operator status event recorded'
+
+  return new Intl.DateTimeFormat('en-GB', {
+    timeZone: 'UTC',
+    day: '2-digit',
+    month: 'short',
+    year: 'numeric',
+    hour: '2-digit',
+    minute: '2-digit',
+    second: '2-digit',
+    hour12: false,
+  }).format(new Date(value)) + ' UTC'
+}
+
 export default async function OperatorPage() {
   const supabase = await createClient()
+
   const { data: claimsData } = await supabase.auth.getClaims()
   const claims = claimsData?.claims
 
   if (!claims?.sub) redirect('/operator/login')
 
-  const { data: profile } = await supabase
+  const { data: profile, error: profileError } = await supabase
     .from('operator_profiles')
     .select('display_name, account_status, organisations(name)')
     .eq('user_id', claims.sub)
     .maybeSingle()
 
+  if (profileError) {
+    throw new Error('Unable to load operator profile.')
+  }
+
   if (!profile || profile.account_status !== 'ACTIVE') {
     return (
-      <main style={{minHeight:'100vh',background:'#071019',color:'#edf5fb',padding:'32px'}}>
-        <h1>Operator access unavailable</h1>
-        <p style={{color:'#91a6b8'}}>Your identity is authenticated, but there is no active DASS operator profile assigned to this account.</p>
-        <form action={logout}><button type="submit">Sign out</button></form>
+      <main style={{ minHeight: '100vh', background: '#071019', color: '#edf5fb', padding: '32px' }}>
+        <div style={{ maxWidth: '760px', margin: '0 auto' }}>
+          <div style={{ fontSize: '11px', letterSpacing: '.15em', textTransform: 'uppercase', color: '#7f9db0', fontWeight: 800 }}>
+            DASS Alpha 0.2.1
+          </div>
+          <h1>Operator access unavailable</h1>
+          <p style={{ color: '#91a6b8', lineHeight: 1.6 }}>
+            Your identity is authenticated, but there is no active DASS operator profile assigned to this account.
+          </p>
+          <form action={logout}>
+            <button type="submit" style={{ background: '#10212d', border: '1px solid #385267', color: '#dceef7', borderRadius: '9px', padding: '10px 13px' }}>
+              Sign out
+            </button>
+          </form>
+        </div>
       </main>
     )
   }
 
+  const { data: permissionData, error: permissionError } = await supabase
+    .from('operator_permissions')
+    .select(`
+      can_change_status,
+      danger_areas (
+        id,
+        code,
+        name,
+        lower_limit,
+        upper_limit,
+        promulgated_period,
+        authority,
+        airspace_when_inactive,
+        current_status,
+        status_updated_at
+      )
+    `)
+    .eq('user_id', claims.sub)
+    .order('created_at', { ascending: true })
+
+  if (permissionError) {
+    throw new Error('Unable to load assigned Danger Areas.')
+  }
+
+  const permissions = (permissionData ?? []) as unknown as PermissionRow[]
+  const assigned = permissions.filter((row) => row.danger_areas)
+
   return (
-    <main style={{minHeight:'100vh',background:'#071019',color:'#edf5fb',padding:'28px'}}>
-      <div style={{maxWidth:'1000px',margin:'0 auto'}}>
-        <div style={{display:'flex',justifyContent:'space-between',gap:'18px',alignItems:'center',borderBottom:'1px solid #203243',paddingBottom:'18px'}}>
+    <main style={{ minHeight: '100vh', background: '#071019', color: '#edf5fb', padding: '24px' }}>
+      <div style={{ maxWidth: '1120px', margin: '0 auto' }}>
+        <header style={{
+          display: 'flex',
+          justifyContent: 'space-between',
+          gap: '18px',
+          alignItems: 'center',
+          borderBottom: '1px solid #203243',
+          paddingBottom: '18px',
+          flexWrap: 'wrap'
+        }}>
           <div>
-            <div style={{fontSize:'11px',letterSpacing:'.15em',textTransform:'uppercase',color:'#7f9db0',fontWeight:800}}>DASS Alpha 0.2</div>
-            <h1 style={{margin:'5px 0'}}>Range Operator</h1>
-            <div style={{color:'#91a6b8',fontSize:'13px'}}>Signed in as {profile.display_name}</div>
+            <div style={{ fontSize: '11px', letterSpacing: '.15em', textTransform: 'uppercase', color: '#7f9db0', fontWeight: 800 }}>
+              DASS Alpha 0.2.1 · Demonstration only
+            </div>
+            <h1 style={{ margin: '5px 0 4px', fontSize: '30px' }}>My Danger Areas</h1>
+            <div style={{ color: '#91a6b8', fontSize: '13px' }}>
+              {profile.display_name} · {(profile.organisations as { name?: string } | null)?.name ?? 'No organisation'}
+            </div>
           </div>
-          <form action={logout}><button type="submit" style={{background:'#10212d',border:'1px solid #385267',color:'#dceef7',borderRadius:'9px',padding:'10px 13px'}}>Sign out</button></form>
+
+          <div style={{ display: 'flex', gap: '9px' }}>
+            <a href="/" style={{
+              textDecoration: 'none',
+              background: '#10212d',
+              border: '1px solid #385267',
+              color: '#dceef7',
+              borderRadius: '9px',
+              padding: '10px 13px',
+              fontSize: '13px'
+            }}>
+              Live map
+            </a>
+
+            <form action={logout}>
+              <button type="submit" style={{
+                background: '#10212d',
+                border: '1px solid #385267',
+                color: '#dceef7',
+                borderRadius: '9px',
+                padding: '10px 13px',
+                cursor: 'pointer'
+              }}>
+                Sign out
+              </button>
+            </form>
+          </div>
+        </header>
+
+        <section style={{
+          marginTop: '22px',
+          borderLeft: '3px solid #ffba4a',
+          background: 'rgba(255,186,74,.06)',
+          padding: '12px 14px',
+          color: '#d7c79f',
+          fontSize: '12px',
+          lineHeight: 1.55,
+          borderRadius: '0 9px 9px 0'
+        }}>
+          <strong>Alpha restriction:</strong> This page is read-only. Status-changing controls are deliberately withheld until assigned-area visibility has been validated.
+        </section>
+
+        <div style={{
+          marginTop: '22px',
+          display: 'flex',
+          justifyContent: 'space-between',
+          alignItems: 'end',
+          gap: '14px',
+          flexWrap: 'wrap'
+        }}>
+          <div>
+            <div style={{ fontSize: '11px', color: '#7f9db0', textTransform: 'uppercase', letterSpacing: '.12em', fontWeight: 800 }}>
+              Authorised airspace
+            </div>
+            <h2 style={{ margin: '5px 0 0', fontSize: '22px' }}>
+              {assigned.length} assigned {assigned.length === 1 ? 'area' : 'areas'}
+            </h2>
+          </div>
+
+          <div style={{ color: '#718a9a', fontSize: '12px' }}>
+            Access is derived from your individual DASS permissions.
+          </div>
         </div>
 
-        <section style={{marginTop:'28px',background:'#0b1722',border:'1px solid #203243',borderRadius:'14px',padding:'22px'}}>
-          <div style={{fontSize:'11px',letterSpacing:'.12em',textTransform:'uppercase',color:'#7f9db0',fontWeight:800}}>Authentication complete</div>
-          <h2 style={{marginBottom:'8px'}}>Operator account verified</h2>
-          <p style={{color:'#91a6b8',lineHeight:1.6}}>Your account is authenticated and active. The next Alpha 0.2 increment will populate this dashboard only with Danger Areas explicitly assigned to your individual account.</p>
-        </section>
+        {assigned.length === 0 ? (
+          <section style={{
+            marginTop: '18px',
+            background: '#0b1722',
+            border: '1px solid #203243',
+            borderRadius: '14px',
+            padding: '22px'
+          }}>
+            <h3 style={{ marginTop: 0 }}>No Danger Areas assigned</h3>
+            <p style={{ color: '#91a6b8', marginBottom: 0 }}>
+              Your account is active, but no operational airspace permissions have been allocated.
+            </p>
+          </section>
+        ) : (
+          <div style={{
+            display: 'grid',
+            gridTemplateColumns: 'repeat(auto-fit,minmax(300px,1fr))',
+            gap: '16px',
+            marginTop: '18px'
+          }}>
+            {assigned.map((permission) => {
+              const area = permission.danger_areas!
+              const badge = statusStyle(area.current_status)
+
+              return (
+                <article key={area.id} style={{
+                  background: 'linear-gradient(180deg,#0b1722,#08131c)',
+                  border: '1px solid #203243',
+                  borderRadius: '14px',
+                  padding: '20px',
+                  boxShadow: '0 16px 40px rgba(0,0,0,.20)'
+                }}>
+                  <div style={{ display: 'flex', justifyContent: 'space-between', gap: '12px', alignItems: 'flex-start' }}>
+                    <div>
+                      <div style={{ color: '#8fdaf0', fontWeight: 850, letterSpacing: '.06em', fontSize: '17px' }}>
+                        {area.code}
+                      </div>
+                      <h3 style={{ margin: '5px 0 0', fontSize: '20px' }}>{area.name}</h3>
+                    </div>
+
+                    <span style={{
+                      ...badge,
+                      padding: '6px 9px',
+                      borderRadius: '999px',
+                      fontSize: '11px',
+                      fontWeight: 900,
+                      letterSpacing: '.08em'
+                    }}>
+                      {area.current_status}
+                    </span>
+                  </div>
+
+                  <div style={{
+                    marginTop: '18px',
+                    display: 'grid',
+                    gridTemplateColumns: '1fr 1fr',
+                    gap: '9px'
+                  }}>
+                    <DataItem label="Promulgated period" value={area.promulgated_period} />
+                    <DataItem label="Vertical limits" value={`${area.lower_limit} – ${area.upper_limit}`} />
+                    <DataItem label="Authority" value={area.authority} />
+                    <DataItem label="When inactive" value={area.airspace_when_inactive} />
+                  </div>
+
+                  <div style={{
+                    marginTop: '15px',
+                    borderTop: '1px solid #203243',
+                    paddingTop: '13px'
+                  }}>
+                    <div style={{ fontSize: '10px', color: '#7892a4', textTransform: 'uppercase', letterSpacing: '.12em', fontWeight: 800 }}>
+                      Last DASS status update
+                    </div>
+                    <div style={{ marginTop: '5px', fontSize: '13px', color: '#c8d7e2' }}>
+                      {formatUtc(area.status_updated_at)}
+                    </div>
+                  </div>
+
+                  <div style={{
+                    marginTop: '14px',
+                    display: 'flex',
+                    justifyContent: 'space-between',
+                    gap: '10px',
+                    alignItems: 'center'
+                  }}>
+                    <span style={{
+                      fontSize: '11px',
+                      color: permission.can_change_status ? '#7be3a9' : '#9aabba'
+                    }}>
+                      {permission.can_change_status ? 'Status authority assigned' : 'Read-only permission'}
+                    </span>
+
+                    <button disabled style={{
+                      border: '1px solid #2a4050',
+                      background: '#0d1b25',
+                      color: '#607888',
+                      borderRadius: '8px',
+                      padding: '9px 11px',
+                      fontWeight: 750,
+                      cursor: 'not-allowed'
+                    }}>
+                      Controls locked
+                    </button>
+                  </div>
+                </article>
+              )
+            })}
+          </div>
+        )}
+
+        <footer style={{
+          marginTop: '24px',
+          paddingTop: '16px',
+          borderTop: '1px solid #203243',
+          color: '#607888',
+          fontSize: '11px',
+          lineHeight: 1.5
+        }}>
+          DASS Alpha is a demonstration system and does not supersede the UK AIP, NOTAM, ATC instructions or established Danger Area procedures.
+        </footer>
       </div>
     </main>
+  )
+}
+
+function DataItem({ label, value }: { label: string; value: string }) {
+  return (
+    <div style={{
+      border: '1px solid #203746',
+      borderRadius: '9px',
+      padding: '10px',
+      background: '#0a1822'
+    }}>
+      <div style={{
+        color: '#7892a4',
+        fontSize: '9px',
+        textTransform: 'uppercase',
+        letterSpacing: '.12em',
+        fontWeight: 800,
+        marginBottom: '5px'
+      }}>
+        {label}
+      </div>
+      <strong style={{ fontSize: '13px' }}>{value}</strong>
+    </div>
   )
 }
