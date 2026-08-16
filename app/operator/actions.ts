@@ -44,11 +44,19 @@ export async function changeDangerAreaStatus(
   if (error) {
     const raw = error.message || ''
 
-    if (raw.includes('Promulgated end time has already passed')) {
+    if (raw.includes('Reporting window is closed')) {
       return {
         ok: false,
         message:
-          'This Danger Area is outside its current promulgated reporting window. A new ACTIVE or INACTIVE declaration cannot be made until the next promulgated period.',
+          'This Danger Area is outside its current machine-readable reporting window. No ACTIVE or INACTIVE declaration has been recorded.',
+      }
+    }
+
+    if (raw.includes('Reporting window unavailable')) {
+      return {
+        ok: false,
+        message:
+          'DASS does not currently hold a valid machine-readable reporting window for this Danger Area. No status has been changed.',
       }
     }
 
