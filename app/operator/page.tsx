@@ -29,6 +29,7 @@ type StatusEvent = {
   changed_at: string
   note: string | null
   valid_until: string | null
+  event_source: 'OPERATOR' | 'SYSTEM'
   danger_areas: { code: string } | null
 }
 
@@ -91,7 +92,7 @@ export default async function OperatorPage() {
     return (
       <main style={{minHeight:'100vh',background:'#071019',color:'#edf5fb',padding:'32px'}}>
         <div style={{maxWidth:'760px',margin:'0 auto'}}>
-          <div style={{fontSize:'11px',letterSpacing:'.15em',textTransform:'uppercase',color:'#7f9db0',fontWeight:800}}>DASS Alpha 0.3.1</div>
+          <div style={{fontSize:'11px',letterSpacing:'.15em',textTransform:'uppercase',color:'#7f9db0',fontWeight:800}}>DASS Alpha 0.3.2</div>
           <h1>Operator access unavailable</h1>
           <p style={{color:'#91a6b8'}}>Your identity is authenticated, but there is no active DASS operator profile assigned to this account.</p>
           <form action={logout}><button type="submit">Sign out</button></form>
@@ -116,7 +117,7 @@ export default async function OperatorPage() {
 
   const { data: eventData, error: eventError } = await supabase
     .from('status_events')
-    .select(`id,previous_status,new_status,changed_at,note,valid_until,danger_areas(code)`)
+    .select(`id,previous_status,new_status,changed_at,note,valid_until,event_source,danger_areas(code)`)
     .order('changed_at', { ascending: false })
     .limit(8)
 
@@ -129,7 +130,7 @@ export default async function OperatorPage() {
       <div style={{maxWidth:'1120px',margin:'0 auto'}}>
         <div className="operator-dashboard-header" style={{display:'flex',justifyContent:'space-between',gap:'18px',alignItems:'center',borderBottom:'1px solid #203243',paddingBottom:'18px',flexWrap:'wrap'}}>
           <div>
-            <div style={{fontSize:'11px',letterSpacing:'.15em',textTransform:'uppercase',color:'#7f9db0',fontWeight:800}}>DASS Alpha 0.3.1 · Status validity</div>
+            <div style={{fontSize:'11px',letterSpacing:'.15em',textTransform:'uppercase',color:'#7f9db0',fontWeight:800}}>DASS Alpha 0.3.2 · Automatic expiry</div>
             <h1 style={{margin:'5px 0 4px',fontSize:'30px'}}>My Danger Areas</h1>
             <div style={{color:'#91a6b8',fontSize:'13px'}}>
               {profile.display_name} · {(profile.organisations as {name?:string}|null)?.name ?? 'No organisation'}
@@ -143,7 +144,7 @@ export default async function OperatorPage() {
         </div>
 
         <section style={{marginTop:'22px',borderLeft:'3px solid #ffba4a',background:'rgba(255,186,74,.06)',padding:'12px 14px',color:'#d7c79f',fontSize:'12px',lineHeight:1.55,borderRadius:'0 9px 9px 0'}}>
-          <strong>Status validity protection:</strong> ACTIVE and INACTIVE declarations are trusted only during a valid promulgated reporting window and until the stored validity deadline. Outside that window, DASS presents the area as UNVERIFIED.
+          <strong>Automatic expiry enabled:</strong> DASS checks for expired ACTIVE and INACTIVE declarations every minute. Expired declarations are changed to UNVERIFIED by the DASS system and recorded in the audit trail.
         </section>
 
         <div style={{marginTop:'22px'}}>
@@ -174,13 +175,8 @@ export default async function OperatorPage() {
                 </div>
 
                 <div style={{marginTop:'15px',borderTop:'1px solid #203243',paddingTop:'13px'}}>
-                  <div style={{fontSize:'10px',color:'#7892a4',textTransform:'uppercase',letterSpacing:'.12em',fontWeight:800}}>Last operator declaration</div>
+                  <div style={{fontSize:'10px',color:'#7892a4',textTransform:'uppercase',letterSpacing:'.12em',fontWeight:800}}>Last status update</div>
                   <div style={{marginTop:'5px',fontSize:'13px',color:'#c8d7e2'}}>{formatUtc(area.status_updated_at)}</div>
-                  {area.effective_status === 'UNVERIFIED' && area.declared_status !== 'UNVERIFIED' && (
-                    <div style={{marginTop:'7px',color:'#ffd07d',fontSize:'11px',lineHeight:1.45}}>
-                      Previous {area.declared_status} declaration is no longer within a valid reporting period.
-                    </div>
-                  )}
                 </div>
 
                 <StatusControls
@@ -204,18 +200,45 @@ export default async function OperatorPage() {
             <p style={{color:'#91a6b8',fontSize:'13px',marginBottom:0}}>No status events have been recorded for your assigned Danger Areas yet.</p>
           ) : (
             <div style={{display:'grid',gap:'8px'}}>
-              {events.map(event => (
-                <div key={event.id} style={{border:'1px solid #203746',background:'#091720',borderRadius:'9px',padding:'11px'}}>
-                  <div style={{display:'flex',justifyContent:'space-between',gap:'12px',flexWrap:'wrap'}}>
-                    <strong style={{fontSize:'13px'}}>{event.danger_areas?.code ?? 'Danger Area'} · {event.previous_status} → {event.new_status}</strong>
-                    <span style={{color:'#7892a4',fontSize:'11px'}}>{formatUtc(event.changed_at)}</span>
+              {events.map(event => {
+                const isSystem = event.event_source === 'SYSTEM'
+                return (
+                  <div key={event.id} style={{
+                    border: isSystem ? '1px solid rgba(255,186,74,.35)' : '1px solid #203746',
+                    background: isSystem ? 'rgba(255,186,74,.045)' : '#091720',
+                    borderRadius:'9px',
+                    padding:'11px'
+                  }}>
+                    <div style={{display:'flex',justifyContent:'space-between',gap:'12px',flexWrap:'wrap'}}>
+                      <strong style={{fontSize:'13px'}}>{event.danger_areas?.code ?? 'Danger Area'} · {event.previous_status} → {event.new_status}</strong>
+                      <span style={{
+                        fontSize:'10px',
+                        fontWeight:850,
+                        letterSpacing:'.08em',
+                        color:isSystem ? '#ffd07d' : '#8fdaf0'
+                      }}>
+                        {isSystem ? 'DASS SYSTEM' : 'OPERATOR'}
+                      </span>
+                    </div>
+
+                    <div style={{marginTop:'5px',color:'#7892a4',fontSize:'11px'}}>
+                      Event time: {formatUtc(event.changed_at)}
+                    </div>
+
+                    {event.valid_until && (
+                      <div style={{marginTop:'3px',color:'#7892a4',fontSize:'11px'}}>
+                        Declaration validity deadline: {formatUtc(event.valid_until)}
+                      </div>
+                    )}
+
+                    {event.note && (
+                      <div style={{marginTop:'6px',color:isSystem ? '#d7c79f' : '#91a6b8',fontSize:'11px'}}>
+                        {event.note}
+                      </div>
+                    )}
                   </div>
-                  <div style={{marginTop:'5px',color:'#7892a4',fontSize:'11px'}}>
-                    Valid until: {event.valid_until ? formatUtc(event.valid_until) : 'No validity / legacy event'}
-                  </div>
-                  {event.note && <div style={{marginTop:'6px',color:'#91a6b8',fontSize:'11px'}}>{event.note}</div>}
-                </div>
-              ))}
+                )
+              })}
             </div>
           )}
         </section>
