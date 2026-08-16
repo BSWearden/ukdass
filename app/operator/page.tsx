@@ -5,21 +5,21 @@ import StatusControls from './components/StatusControls'
 
 type Status = 'ACTIVE' | 'INACTIVE' | 'UNVERIFIED'
 
-type PermissionRow = {
+type AssignedArea = {
+  user_id: string
   can_change_status: boolean
-  danger_areas: {
-    id: string
-    code: string
-    name: string
-    lower_limit: string
-    upper_limit: string
-    promulgated_period: string
-    authority: string
-    airspace_when_inactive: string
-    current_status: Status
-    status_updated_at: string | null
-    status_valid_until: string | null
-  } | null
+  id: string
+  code: string
+  name: string
+  lower_limit: string
+  upper_limit: string
+  promulgated_period: string
+  authority: string
+  airspace_when_inactive: string
+  declared_status: Status
+  effective_status: Status
+  status_updated_at: string | null
+  status_valid_until: string | null
 }
 
 type StatusEvent = {
@@ -30,12 +30,6 @@ type StatusEvent = {
   note: string | null
   valid_until: string | null
   danger_areas: { code: string } | null
-}
-
-function effectiveStatus(declared: Status, validUntil: string | null): Status {
-  if (!validUntil) return 'UNVERIFIED'
-  if (new Date(validUntil).getTime() <= Date.now()) return 'UNVERIFIED'
-  return declared
 }
 
 function statusStyle(status: string) {
@@ -54,6 +48,7 @@ function formatUtc(value: string | null) {
 
 export default async function OperatorPage() {
   const supabase = await createClient()
+
   const {data:claimsData} = await supabase.auth.getClaims()
   const claims = claimsData?.claims
   if (!claims?.sub) redirect('/operator/login')
@@ -79,28 +74,38 @@ export default async function OperatorPage() {
     )
   }
 
-  const {data:permissionData,error:permissionError} = await supabase
-    .from('operator_permissions')
+  const {data:assignedData,error:assignedError} = await supabase
+    .from('operator_effective_danger_areas')
     .select(`
+      user_id,
       can_change_status,
-      danger_areas (
-        id,code,name,lower_limit,upper_limit,promulgated_period,
-        authority,airspace_when_inactive,current_status,status_updated_at,status_valid_until
-      )
+      id,
+      code,
+      name,
+      lower_limit,
+      upper_limit,
+      promulgated_period,
+      authority,
+      airspace_when_inactive,
+      declared_status,
+      effective_status,
+      status_updated_at,
+      status_valid_until
     `)
     .eq('user_id', claims.sub)
-    .order('created_at',{ascending:true})
+    .order('code', {ascending:true})
 
-  if (permissionError) throw new Error('Unable to load assigned Danger Areas.')
+  if (assignedError) throw new Error('Unable to load assigned Danger Areas.')
 
-  const permissions = (permissionData ?? []) as unknown as PermissionRow[]
-  const assigned = permissions.filter(row => row.danger_areas)
+  const assigned = (assignedData ?? []) as AssignedArea[]
 
-  const {data:eventData} = await supabase
+  const {data:eventData,error:eventError} = await supabase
     .from('status_events')
     .select(`id,previous_status,new_status,changed_at,note,valid_until,danger_areas(code)`)
     .order('changed_at',{ascending:false})
     .limit(8)
+
+  if (eventError) throw new Error('Unable to load status audit history.')
 
   const events = (eventData ?? []) as unknown as StatusEvent[]
 
@@ -131,10 +136,8 @@ export default async function OperatorPage() {
         </div>
 
         <div style={{display:'grid',gridTemplateColumns:'repeat(auto-fit,minmax(310px,1fr))',gap:'16px',marginTop:'18px'}}>
-          {assigned.map(permission => {
-            const area = permission.danger_areas!
-            const effective = effectiveStatus(area.current_status, area.status_valid_until)
-            const badge = statusStyle(effective)
+          {assigned.map(area => {
+            const badge = statusStyle(area.effective_status)
 
             return (
               <article key={area.id} style={{background:'linear-gradient(180deg,#0b1722,#08131c)',border:'1px solid #203243',borderRadius:'14px',padding:'20px',boxShadow:'0 16px 40px rgba(0,0,0,.20)'}}>
@@ -143,27 +146,32 @@ export default async function OperatorPage() {
                     <div style={{color:'#8fdaf0',fontWeight:850,letterSpacing:'.06em',fontSize:'17px'}}>{area.code}</div>
                     <h3 style={{margin:'5px 0 0',fontSize:'20px'}}>{area.name}</h3>
                   </div>
-                  <span style={{...badge,padding:'6px 9px',borderRadius:'999px',fontSize:'11px',fontWeight:900,letterSpacing:'.08em'}}>{effective}</span>
+                  <span style={{...badge,padding:'6px 9px',borderRadius:'999px',fontSize:'11px',fontWeight:900,letterSpacing:'.08em'}}>{area.effective_status}</span>
                 </div>
 
                 <div style={{marginTop:'18px',display:'grid',gridTemplateColumns:'1fr 1fr',gap:'9px'}}>
                   <DataItem label="Promulgated period" value={area.promulgated_period}/>
                   <DataItem label="Vertical limits" value={`${area.lower_limit} – ${area.upper_limit}`}/>
-                  <DataItem label="Stored declaration" value={area.current_status}/>
+                  <DataItem label="Stored declaration" value={area.declared_status}/>
                   <DataItem label="Valid until" value={area.status_valid_until ? formatUtc(area.status_valid_until) : 'No current validity'}/>
                 </div>
 
                 <div style={{marginTop:'15px',borderTop:'1px solid #203243',paddingTop:'13px'}}>
                   <div style={{fontSize:'10px',color:'#7892a4',textTransform:'uppercase',letterSpacing:'.12em',fontWeight:800}}>Last operator declaration</div>
                   <div style={{marginTop:'5px',fontSize:'13px',color:'#c8d7e2'}}>{formatUtc(area.status_updated_at)}</div>
-                  {effective === 'UNVERIFIED' && area.current_status !== 'UNVERIFIED' && (
+                  {area.effective_status === 'UNVERIFIED' && area.declared_status !== 'UNVERIFIED' && (
                     <div style={{marginTop:'7px',color:'#ffd07d',fontSize:'11px',lineHeight:1.45}}>
-                      Previous {area.current_status} declaration is no longer within a valid reporting period.
+                      Previous {area.declared_status} declaration is no longer within a valid reporting period.
                     </div>
                   )}
                 </div>
 
-                <StatusControls areaId={area.id} code={area.code} currentStatus={effective} canChangeStatus={permission.can_change_status}/>
+                <StatusControls
+                  areaId={area.id}
+                  code={area.code}
+                  currentStatus={area.effective_status}
+                  canChangeStatus={area.can_change_status}
+                />
               </article>
             )
           })}
@@ -182,7 +190,7 @@ export default async function OperatorPage() {
                     <strong style={{fontSize:'13px'}}>{event.danger_areas?.code ?? 'Danger Area'} · {event.previous_status} → {event.new_status}</strong>
                     <span style={{color:'#7892a4',fontSize:'11px'}}>{formatUtc(event.changed_at)}</span>
                   </div>
-                  <div style={{marginTop:'5px',color:'#7892a4',fontSize:'11px'}}>Valid until: {event.valid_until ? formatUtc(event.valid_until) : 'No validity / UNVERIFIED'}</div>
+                  <div style={{marginTop:'5px',color:'#7892a4',fontSize:'11px'}}>Valid until: {event.valid_until ? formatUtc(event.valid_until) : 'No validity / legacy event'}</div>
                   {event.note && <div style={{marginTop:'6px',color:'#91a6b8',fontSize:'11px'}}>{event.note}</div>}
                 </div>
               ))}
