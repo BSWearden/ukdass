@@ -1,0 +1,30 @@
+/*
+  DASS — UNVERIFIED map styling
+  Burnt amber fill with a brighter amber boundary for improved contrast
+  against the darkened OpenStreetMap basemap.
+*/
+
+/* Leaflet polygons currently receive #ffba4a inline from app/page.tsx.
+   Target only that existing UNVERIFIED colour and override its presentation. */
+.leaflet-overlay-pane path[stroke="#ffba4a"],
+.leaflet-overlay-pane path[stroke="#FFBA4A"] {
+  stroke: #F59E0B !important;
+  stroke-width: 3px !important;
+  fill: #D97706 !important;
+  fill-opacity: 0.28 !important;
+  stroke-dasharray: 7 6 !important;
+}
+
+/* Match the public-map legend to the revised UNVERIFIED treatment. */
+.legend .swatch.amber {
+  background: #D97706 !important;
+  border: 1px solid #F59E0B;
+  box-shadow: 0 0 0 1px rgba(245, 158, 11, 0.18);
+}
+
+/* Give the UNVERIFIED information badge the same visual family. */
+.badge.unverified {
+  background: rgba(217, 119, 6, 0.16) !important;
+  color: #FBBF24 !important;
+  border-color: rgba(245, 158, 11, 0.55) !important;
+}

@@ -1,5 +1,6 @@
 import type { Metadata } from 'next';
 import './globals.css';
+import './unverified-map.css';
 
 export const metadata: Metadata = {
   title: 'DASS — UK Dynamic Airspace Status System',
