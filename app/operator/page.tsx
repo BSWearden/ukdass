@@ -33,27 +33,53 @@ type StatusEvent = {
 }
 
 function statusStyle(status: string) {
-  if (status === 'ACTIVE') return {color:'#ff828b',border:'1px solid rgba(255,90,100,.35)',background:'rgba(255,90,100,.14)'}
-  if (status === 'INACTIVE') return {color:'#7be3a9',border:'1px solid rgba(79,209,139,.32)',background:'rgba(79,209,139,.13)'}
-  return {color:'#ffd07d',border:'1px solid rgba(255,186,74,.34)',background:'rgba(255,186,74,.13)'}
+  if (status === 'ACTIVE') return { color:'#ff828b', border:'1px solid rgba(255,90,100,.35)', background:'rgba(255,90,100,.14)' }
+  if (status === 'INACTIVE') return { color:'#7be3a9', border:'1px solid rgba(79,209,139,.32)', background:'rgba(79,209,139,.13)' }
+  return { color:'#ffd07d', border:'1px solid rgba(255,186,74,.34)', background:'rgba(255,186,74,.13)' }
 }
 
 function formatUtc(value: string | null) {
   if (!value) return '—'
   return new Intl.DateTimeFormat('en-GB', {
-    timeZone:'UTC',day:'2-digit',month:'short',year:'numeric',
-    hour:'2-digit',minute:'2-digit',second:'2-digit',hour12:false
+    timeZone:'UTC', day:'2-digit', month:'short', year:'numeric',
+    hour:'2-digit', minute:'2-digit', second:'2-digit', hour12:false
   }).format(new Date(value)) + ' UTC'
+}
+
+function parsePeriod(period: string) {
+  const match = period.match(/([0-2][0-9])([0-5][0-9])\s*[–-]\s*([0-2][0-9])([0-5][0-9])Z$/)
+
+  if (!match) return { open: false, label: period }
+
+  const startHour = Number(match[1])
+  const startMinute = Number(match[2])
+  const endHour = Number(match[3])
+  const endMinute = Number(match[4])
+
+  if (startHour > 23 || endHour > 23) return { open: false, label: period }
+
+  const now = new Date()
+  const nowMinutes = now.getUTCHours() * 60 + now.getUTCMinutes()
+  const startMinutes = startHour * 60 + startMinute
+  const endMinutes = endHour * 60 + endMinute
+
+  const open =
+    endMinutes > startMinutes
+      ? nowMinutes >= startMinutes && nowMinutes < endMinutes
+      : nowMinutes >= startMinutes || nowMinutes < endMinutes
+
+  return { open, label: period }
 }
 
 export default async function OperatorPage() {
   const supabase = await createClient()
 
-  const {data:claimsData} = await supabase.auth.getClaims()
+  const { data: claimsData } = await supabase.auth.getClaims()
   const claims = claimsData?.claims
+
   if (!claims?.sub) redirect('/operator/login')
 
-  const {data:profile,error:profileError} = await supabase
+  const { data: profile, error: profileError } = await supabase
     .from('operator_profiles')
     .select('display_name, account_status, organisations(name)')
     .eq('user_id', claims.sub)
@@ -74,35 +100,24 @@ export default async function OperatorPage() {
     )
   }
 
-  const {data:assignedData,error:assignedError} = await supabase
+  const { data: assignedData, error: assignedError } = await supabase
     .from('operator_effective_danger_areas')
     .select(`
-      user_id,
-      can_change_status,
-      id,
-      code,
-      name,
-      lower_limit,
-      upper_limit,
-      promulgated_period,
-      authority,
-      airspace_when_inactive,
-      declared_status,
-      effective_status,
-      status_updated_at,
-      status_valid_until
+      user_id,can_change_status,id,code,name,lower_limit,upper_limit,
+      promulgated_period,authority,airspace_when_inactive,declared_status,
+      effective_status,status_updated_at,status_valid_until
     `)
     .eq('user_id', claims.sub)
-    .order('code', {ascending:true})
+    .order('code', { ascending: true })
 
   if (assignedError) throw new Error('Unable to load assigned Danger Areas.')
 
   const assigned = (assignedData ?? []) as AssignedArea[]
 
-  const {data:eventData,error:eventError} = await supabase
+  const { data: eventData, error: eventError } = await supabase
     .from('status_events')
     .select(`id,previous_status,new_status,changed_at,note,valid_until,danger_areas(code)`)
-    .order('changed_at',{ascending:false})
+    .order('changed_at', { ascending: false })
     .limit(8)
 
   if (eventError) throw new Error('Unable to load status audit history.')
@@ -120,6 +135,7 @@ export default async function OperatorPage() {
               {profile.display_name} · {(profile.organisations as {name?:string}|null)?.name ?? 'No organisation'}
             </div>
           </div>
+
           <div className="operator-dashboard-actions" style={{display:'flex',gap:'9px'}}>
             <a href="/" style={{textDecoration:'none',background:'#10212d',border:'1px solid #385267',color:'#dceef7',borderRadius:'9px',padding:'10px 13px',fontSize:'13px'}}>Live map</a>
             <form action={logout}><button type="submit" style={{background:'#10212d',border:'1px solid #385267',color:'#dceef7',borderRadius:'9px',padding:'10px 13px'}}>Sign out</button></form>
@@ -127,7 +143,7 @@ export default async function OperatorPage() {
         </div>
 
         <section style={{marginTop:'22px',borderLeft:'3px solid #ffba4a',background:'rgba(255,186,74,.06)',padding:'12px 14px',color:'#d7c79f',fontSize:'12px',lineHeight:1.55,borderRadius:'0 9px 9px 0'}}>
-          <strong>Status validity protection:</strong> ACTIVE and INACTIVE declarations are trusted only until the stored validity deadline. Once expired, DASS presents the area as UNVERIFIED. This does not cancel or amend the promulgated NOTAM.
+          <strong>Status validity protection:</strong> ACTIVE and INACTIVE declarations are trusted only during a valid promulgated reporting window and until the stored validity deadline. Outside that window, DASS presents the area as UNVERIFIED.
         </section>
 
         <div style={{marginTop:'22px'}}>
@@ -138,6 +154,7 @@ export default async function OperatorPage() {
         <div style={{display:'grid',gridTemplateColumns:'repeat(auto-fit,minmax(310px,1fr))',gap:'16px',marginTop:'18px'}}>
           {assigned.map(area => {
             const badge = statusStyle(area.effective_status)
+            const period = parsePeriod(area.promulgated_period)
 
             return (
               <article key={area.id} style={{background:'linear-gradient(180deg,#0b1722,#08131c)',border:'1px solid #203243',borderRadius:'14px',padding:'20px',boxShadow:'0 16px 40px rgba(0,0,0,.20)'}}>
@@ -151,7 +168,7 @@ export default async function OperatorPage() {
 
                 <div style={{marginTop:'18px',display:'grid',gridTemplateColumns:'1fr 1fr',gap:'9px'}}>
                   <DataItem label="Promulgated period" value={area.promulgated_period}/>
-                  <DataItem label="Vertical limits" value={`${area.lower_limit} – ${area.upper_limit}`}/>
+                  <DataItem label="Reporting window" value={period.open ? 'OPEN' : 'CLOSED'}/>
                   <DataItem label="Stored declaration" value={area.declared_status}/>
                   <DataItem label="Valid until" value={area.status_valid_until ? formatUtc(area.status_valid_until) : 'No current validity'}/>
                 </div>
@@ -171,6 +188,8 @@ export default async function OperatorPage() {
                   code={area.code}
                   currentStatus={area.effective_status}
                   canChangeStatus={area.can_change_status}
+                  declarationAllowed={period.open}
+                  reportingWindowLabel={period.label}
                 />
               </article>
             )
@@ -180,6 +199,7 @@ export default async function OperatorPage() {
         <section style={{marginTop:'24px',background:'#0b1722',border:'1px solid #203243',borderRadius:'14px',padding:'20px'}}>
           <div style={{fontSize:'11px',color:'#7f9db0',textTransform:'uppercase',letterSpacing:'.12em',fontWeight:800}}>Audit trail</div>
           <h2 style={{margin:'5px 0 14px',fontSize:'20px'}}>Recent status events</h2>
+
           {events.length === 0 ? (
             <p style={{color:'#91a6b8',fontSize:'13px',marginBottom:0}}>No status events have been recorded for your assigned Danger Areas yet.</p>
           ) : (
@@ -190,7 +210,9 @@ export default async function OperatorPage() {
                     <strong style={{fontSize:'13px'}}>{event.danger_areas?.code ?? 'Danger Area'} · {event.previous_status} → {event.new_status}</strong>
                     <span style={{color:'#7892a4',fontSize:'11px'}}>{formatUtc(event.changed_at)}</span>
                   </div>
-                  <div style={{marginTop:'5px',color:'#7892a4',fontSize:'11px'}}>Valid until: {event.valid_until ? formatUtc(event.valid_until) : 'No validity / legacy event'}</div>
+                  <div style={{marginTop:'5px',color:'#7892a4',fontSize:'11px'}}>
+                    Valid until: {event.valid_until ? formatUtc(event.valid_until) : 'No validity / legacy event'}
+                  </div>
                   {event.note && <div style={{marginTop:'6px',color:'#91a6b8',fontSize:'11px'}}>{event.note}</div>}
                 </div>
               ))}

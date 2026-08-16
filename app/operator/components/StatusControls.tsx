@@ -8,9 +8,18 @@ type Props = {
   code: string
   currentStatus: 'ACTIVE' | 'INACTIVE' | 'UNVERIFIED'
   canChangeStatus: boolean
+  declarationAllowed: boolean
+  reportingWindowLabel: string
 }
 
-export default function StatusControls({ areaId, code, currentStatus, canChangeStatus }: Props) {
+export default function StatusControls({
+  areaId,
+  code,
+  currentStatus,
+  canChangeStatus,
+  declarationAllowed,
+  reportingWindowLabel,
+}: Props) {
   const [intent, setIntent] = useState<'ACTIVE' | 'INACTIVE' | null>(null)
   const [note, setNote] = useState('')
   const [isPending, startTransition] = useTransition()
@@ -18,14 +27,53 @@ export default function StatusControls({ areaId, code, currentStatus, canChangeS
 
   if (!canChangeStatus) {
     return (
-      <div style={{ fontSize: '11px', color: '#9aabba' }}>
+      <div style={{ marginTop: '15px', fontSize: '11px', color: '#9aabba' }}>
         Read-only permission
+      </div>
+    )
+  }
+
+  if (!declarationAllowed) {
+    return (
+      <div
+        style={{
+          marginTop: '15px',
+          border: '1px solid rgba(255,186,74,.30)',
+          background: 'rgba(255,186,74,.06)',
+          borderRadius: '10px',
+          padding: '12px',
+        }}
+      >
+        <div
+          style={{
+            color: '#ffd07d',
+            fontSize: '10px',
+            textTransform: 'uppercase',
+            letterSpacing: '.12em',
+            fontWeight: 850,
+          }}
+        >
+          Status controls locked
+        </div>
+        <div
+          style={{
+            marginTop: '6px',
+            color: '#cbbd9d',
+            fontSize: '11px',
+            lineHeight: 1.55,
+          }}
+        >
+          The current promulgated reporting window ({reportingWindowLabel}) is not open.
+          DASS will remain UNVERIFIED until an authorised operator makes a declaration
+          during a valid reporting period.
+        </div>
       </div>
     )
   }
 
   function submit() {
     if (!intent) return
+
     setError('')
 
     const formData = new FormData()
@@ -34,13 +82,16 @@ export default function StatusControls({ areaId, code, currentStatus, canChangeS
     formData.set('note', note)
 
     startTransition(async () => {
-      try {
-        await changeDangerAreaStatus(formData)
-        setIntent(null)
-        setNote('')
-      } catch (err) {
-        setError(err instanceof Error ? err.message : 'Unable to update status.')
+      const result = await changeDangerAreaStatus(formData)
+
+      if (!result.ok) {
+        setError(result.message ?? 'Unable to update status.')
+        return
       }
+
+      setIntent(null)
+      setNote('')
+      setError('')
     })
   }
 
@@ -48,11 +99,7 @@ export default function StatusControls({ areaId, code, currentStatus, canChangeS
 
   return (
     <div style={{ marginTop: '15px' }}>
-      <div style={{
-        display: 'grid',
-        gridTemplateColumns: '1fr 1fr',
-        gap: '9px'
-      }}>
+      <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '9px' }}>
         <button
           type="button"
           disabled={isPending || currentStatus === 'ACTIVE'}
@@ -64,7 +111,7 @@ export default function StatusControls({ areaId, code, currentStatus, canChangeS
             borderRadius: '9px',
             padding: '11px',
             fontWeight: 850,
-            cursor: currentStatus === 'ACTIVE' ? 'not-allowed' : 'pointer'
+            cursor: currentStatus === 'ACTIVE' ? 'not-allowed' : 'pointer',
           }}
         >
           ACTIVATE
@@ -81,7 +128,7 @@ export default function StatusControls({ areaId, code, currentStatus, canChangeS
             borderRadius: '9px',
             padding: '11px',
             fontWeight: 850,
-            cursor: currentStatus === 'INACTIVE' ? 'not-allowed' : 'pointer'
+            cursor: currentStatus === 'INACTIVE' ? 'not-allowed' : 'pointer',
           }}
         >
           STAND DOWN
@@ -89,20 +136,24 @@ export default function StatusControls({ areaId, code, currentStatus, canChangeS
       </div>
 
       {intent && (
-        <div style={{
-          marginTop: '12px',
-          border: `1px solid ${standingDown ? 'rgba(255,186,74,.38)' : 'rgba(89,208,240,.32)'}`,
-          background: standingDown ? 'rgba(255,186,74,.06)' : 'rgba(89,208,240,.05)',
-          borderRadius: '11px',
-          padding: '14px'
-        }}>
-          <div style={{
-            fontSize: '10px',
-            textTransform: 'uppercase',
-            letterSpacing: '.13em',
-            color: standingDown ? '#ffd07d' : '#8fdaf0',
-            fontWeight: 850
-          }}>
+        <div
+          style={{
+            marginTop: '12px',
+            border: `1px solid ${standingDown ? 'rgba(255,186,74,.38)' : 'rgba(89,208,240,.32)'}`,
+            background: standingDown ? 'rgba(255,186,74,.06)' : 'rgba(89,208,240,.05)',
+            borderRadius: '11px',
+            padding: '14px',
+          }}
+        >
+          <div
+            style={{
+              fontSize: '10px',
+              textTransform: 'uppercase',
+              letterSpacing: '.13em',
+              color: standingDown ? '#ffd07d' : '#8fdaf0',
+              fontWeight: 850,
+            }}
+          >
             Confirmation required
           </div>
 
@@ -113,24 +164,22 @@ export default function StatusControls({ areaId, code, currentStatus, canChangeS
           </p>
 
           {standingDown && (
-            <div style={{
-              borderLeft: '3px solid #ffba4a',
-              paddingLeft: '10px',
-              marginBottom: '12px',
-              color: '#d7c79f',
-              fontSize: '11px',
-              lineHeight: 1.5
-            }}>
-              This action reports the area as inactive in DASS. It does not cancel or amend the promulgated NOTAM and does not supersede established ATC or Danger Area procedures.
+            <div
+              style={{
+                borderLeft: '3px solid #ffba4a',
+                paddingLeft: '10px',
+                marginBottom: '12px',
+                color: '#d7c79f',
+                fontSize: '11px',
+                lineHeight: 1.5,
+              }}
+            >
+              This action reports the area as inactive in DASS. It does not cancel or amend
+              the promulgated NOTAM and does not supersede established ATC or Danger Area procedures.
             </div>
           )}
 
-          <label style={{
-            display: 'grid',
-            gap: '6px',
-            color: '#91a6b8',
-            fontSize: '11px'
-          }}>
+          <label style={{ display: 'grid', gap: '6px', color: '#91a6b8', fontSize: '11px' }}>
             Operational note <span style={{ color: '#607888' }}>(optional)</span>
             <textarea
               value={note}
@@ -146,27 +195,26 @@ export default function StatusControls({ areaId, code, currentStatus, canChangeS
                 borderRadius: '8px',
                 color: '#edf5fb',
                 padding: '10px',
-                font: 'inherit'
+                font: 'inherit',
               }}
             />
           </label>
 
-          <div style={{
-            marginTop: '11px',
-            display: 'flex',
-            justifyContent: 'flex-end',
-            gap: '8px'
-          }}>
+          <div style={{ marginTop: '11px', display: 'flex', justifyContent: 'flex-end', gap: '8px' }}>
             <button
               type="button"
               disabled={isPending}
-              onClick={() => { setIntent(null); setNote(''); setError('') }}
+              onClick={() => {
+                setIntent(null)
+                setNote('')
+                setError('')
+              }}
               style={{
                 background: '#10212d',
                 border: '1px solid #385267',
                 color: '#dceef7',
                 borderRadius: '8px',
-                padding: '9px 11px'
+                padding: '9px 11px',
               }}
             >
               Cancel
@@ -182,7 +230,7 @@ export default function StatusControls({ areaId, code, currentStatus, canChangeS
                 color: '#f6f0e6',
                 borderRadius: '8px',
                 padding: '9px 12px',
-                fontWeight: 850
+                fontWeight: 850,
               }}
             >
               {isPending ? 'Updating…' : standingDown ? 'Confirm STAND DOWN' : 'Confirm ACTIVATE'}
@@ -190,11 +238,17 @@ export default function StatusControls({ areaId, code, currentStatus, canChangeS
           </div>
 
           {error && (
-            <div style={{
-              marginTop: '10px',
-              color: '#ff9299',
-              fontSize: '11px'
-            }}>
+            <div
+              style={{
+                marginTop: '10px',
+                borderLeft: '3px solid #ff5a64',
+                background: 'rgba(255,90,100,.07)',
+                padding: '9px 10px',
+                color: '#ffb1b6',
+                fontSize: '11px',
+                lineHeight: 1.5,
+              }}
+            >
               {error}
             </div>
           )}
