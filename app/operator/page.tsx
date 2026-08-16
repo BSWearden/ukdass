@@ -25,9 +25,7 @@ type StatusEvent = {
   new_status: string
   changed_at: string
   note: string | null
-  danger_areas: {
-    code: string
-  } | null
+  danger_areas: { code: string } | null
 }
 
 function statusStyle(status: string) {
@@ -62,7 +60,7 @@ export default async function OperatorPage() {
     return (
       <main style={{minHeight:'100vh',background:'#071019',color:'#edf5fb',padding:'32px'}}>
         <div style={{maxWidth:'760px',margin:'0 auto'}}>
-          <div style={{fontSize:'11px',letterSpacing:'.15em',textTransform:'uppercase',color:'#7f9db0',fontWeight:800}}>DASS Alpha 0.2.2</div>
+          <div style={{fontSize:'11px',letterSpacing:'.15em',textTransform:'uppercase',color:'#7f9db0',fontWeight:800}}>DASS Alpha 0.2.3</div>
           <h1>Operator access unavailable</h1>
           <p style={{color:'#91a6b8'}}>Your identity is authenticated, but there is no active DASS operator profile assigned to this account.</p>
           <form action={logout}><button type="submit">Sign out</button></form>
@@ -90,10 +88,7 @@ export default async function OperatorPage() {
 
   const { data: eventData } = await supabase
     .from('status_events')
-    .select(`
-      id, previous_status, new_status, changed_at, note,
-      danger_areas ( code )
-    `)
+    .select(`id, previous_status, new_status, changed_at, note, danger_areas ( code )`)
     .order('changed_at', { ascending: false })
     .limit(8)
 
@@ -102,19 +97,19 @@ export default async function OperatorPage() {
   return (
     <main style={{minHeight:'100vh',background:'#071019',color:'#edf5fb',padding:'24px'}}>
       <div style={{maxWidth:'1120px',margin:'0 auto'}}>
-        <header style={{display:'flex',justifyContent:'space-between',gap:'18px',alignItems:'center',borderBottom:'1px solid #203243',paddingBottom:'18px',flexWrap:'wrap'}}>
+        <div className="operator-dashboard-header" style={{display:'flex',justifyContent:'space-between',gap:'18px',alignItems:'center',borderBottom:'1px solid #203243',paddingBottom:'18px',flexWrap:'wrap'}}>
           <div>
-            <div style={{fontSize:'11px',letterSpacing:'.15em',textTransform:'uppercase',color:'#7f9db0',fontWeight:800}}>DASS Alpha 0.2.2 · Demonstration only</div>
+            <div style={{fontSize:'11px',letterSpacing:'.15em',textTransform:'uppercase',color:'#7f9db0',fontWeight:800}}>DASS Alpha 0.2.3 · Demonstration only</div>
             <h1 style={{margin:'5px 0 4px',fontSize:'30px'}}>My Danger Areas</h1>
             <div style={{color:'#91a6b8',fontSize:'13px'}}>
               {profile.display_name} · {(profile.organisations as {name?:string}|null)?.name ?? 'No organisation'}
             </div>
           </div>
-          <div style={{display:'flex',gap:'9px'}}>
+          <div className="operator-dashboard-actions" style={{display:'flex',gap:'9px'}}>
             <a href="/" style={{textDecoration:'none',background:'#10212d',border:'1px solid #385267',color:'#dceef7',borderRadius:'9px',padding:'10px 13px',fontSize:'13px'}}>Live map</a>
             <form action={logout}><button type="submit" style={{background:'#10212d',border:'1px solid #385267',color:'#dceef7',borderRadius:'9px',padding:'10px 13px'}}>Sign out</button></form>
           </div>
-        </header>
+        </div>
 
         <section style={{marginTop:'22px',borderLeft:'3px solid #ffba4a',background:'rgba(255,186,74,.06)',padding:'12px 14px',color:'#d7c79f',fontSize:'12px',lineHeight:1.55,borderRadius:'0 9px 9px 0'}}>
           <strong>Demonstration system:</strong> DASS status does not cancel or amend a NOTAM and does not supersede the UK AIP, ATC instructions or established Danger Area crossing procedures.
@@ -129,7 +124,6 @@ export default async function OperatorPage() {
           {assigned.map((permission) => {
             const area = permission.danger_areas!
             const badge = statusStyle(area.current_status)
-
             return (
               <article key={area.id} style={{background:'linear-gradient(180deg,#0b1722,#08131c)',border:'1px solid #203243',borderRadius:'14px',padding:'20px',boxShadow:'0 16px 40px rgba(0,0,0,.20)'}}>
                 <div style={{display:'flex',justifyContent:'space-between',gap:'12px',alignItems:'flex-start'}}>
@@ -152,12 +146,7 @@ export default async function OperatorPage() {
                   <div style={{marginTop:'5px',fontSize:'13px',color:'#c8d7e2'}}>{formatUtc(area.status_updated_at)}</div>
                 </div>
 
-                <StatusControls
-                  areaId={area.id}
-                  code={area.code}
-                  currentStatus={area.current_status}
-                  canChangeStatus={permission.can_change_status}
-                />
+                <StatusControls areaId={area.id} code={area.code} currentStatus={area.current_status} canChangeStatus={permission.can_change_status}/>
               </article>
             )
           })}
@@ -166,7 +155,6 @@ export default async function OperatorPage() {
         <section style={{marginTop:'24px',background:'#0b1722',border:'1px solid #203243',borderRadius:'14px',padding:'20px'}}>
           <div style={{fontSize:'11px',color:'#7f9db0',textTransform:'uppercase',letterSpacing:'.12em',fontWeight:800}}>Audit trail</div>
           <h2 style={{margin:'5px 0 14px',fontSize:'20px'}}>Recent status events</h2>
-
           {events.length === 0 ? (
             <p style={{color:'#91a6b8',fontSize:'13px',marginBottom:0}}>No status events have been recorded for your assigned Danger Areas yet.</p>
           ) : (
