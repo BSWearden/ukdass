@@ -56,8 +56,8 @@ export default async function AdminPage(){
 
   return <main style={{minHeight:'100vh',background:'#071019',color:'#edf5fb',padding:'clamp(14px,3vw,26px)'}}><div style={{maxWidth:'1280px',margin:'0 auto'}}>
     <header style={{display:'flex',justifyContent:'space-between',alignItems:'center',gap:'16px',flexWrap:'wrap',paddingBottom:'18px',borderBottom:'1px solid #203243'}}>
-      <div><div style={{fontSize:'10px',letterSpacing:'.16em',textTransform:'uppercase',color:'#7f9db0',fontWeight:850}}>DASS Alpha 0.5.2 · Governance & Account Assurance</div><h1 style={{margin:'5px 0 4px',fontSize:'clamp(25px,5vw,32px)'}}>Administrator Dashboard</h1><div style={{fontSize:'13px',color:'#91a6b8'}}>{adminProfile.display_name} · {adminProfile.admin_role}</div></div>
-      <div style={{display:'flex',gap:'9px',flexWrap:'wrap'}}><a href="/admin/aip-import" style={nav}>AIP imports</a><a href="/operator" style={nav}>Operator interface</a><a href="/" style={nav}>Live map</a><form action={adminLogout}><button type="submit" style={{...nav,height:'100%'}}>Sign out</button></form></div>
+      <div><div style={{fontSize:'10px',letterSpacing:'.16em',textTransform:'uppercase',color:'#7f9db0',fontWeight:850}}>DASS Alpha 1.1.0 · Governance & Authority Assurance</div><h1 style={{margin:'5px 0 4px',fontSize:'clamp(25px,5vw,32px)'}}>Administrator Dashboard</h1><div style={{fontSize:'13px',color:'#91a6b8'}}>{adminProfile.display_name} · {adminProfile.admin_role}</div></div>
+      <div style={{display:'flex',gap:'9px',flexWrap:'wrap'}}><a href="/admin/authority" style={nav}>Authority mapping</a><a href="/admin/aip-import" style={nav}>AIP imports</a><a href="/operator" style={nav}>Operator interface</a><a href="/" style={nav}>Live map</a><form action={adminLogout}><button type="submit" style={{...nav,height:'100%'}}>Sign out</button></form></div>
     </header>
 
     <section style={{marginTop:'18px',display:'grid',gridTemplateColumns:'repeat(auto-fit,minmax(150px,1fr))',gap:'10px'}}>
