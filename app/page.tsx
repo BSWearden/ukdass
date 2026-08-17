@@ -14,6 +14,11 @@ type Area = {
   status: Status;
   statusUpdatedAt: string | null;
   statusValidUntil: string | null;
+  operationalPeriodPhase?: 'CURRENT' | 'UPCOMING' | null;
+  operationalPeriodStartsAt?: string | null;
+  operationalPeriodEndsAt?: string | null;
+  operationalPeriodReference?: string | null;
+  operationalPeriodSource?: string | null;
   period: string;
   limits: string;
   authority: string;
@@ -31,9 +36,15 @@ type DbArea = {
   promulgated_period: string;
   authority: string;
   airspace_when_inactive: string;
-  current_status: Status;
+  declared_status: Status;
+  effective_status: Status;
   status_updated_at: string | null;
   status_valid_until: string | null;
+  operational_period_phase: 'CURRENT' | 'UPCOMING' | null;
+  operational_period_starts_at: string | null;
+  operational_period_ends_at: string | null;
+  operational_period_reference: string | null;
+  operational_period_source: string | null;
 };
 
 const demonstrationAreas: Area[] = [
@@ -71,15 +82,20 @@ function formatUtcTime(value: string | null) {
 }
 
 function mergeDatabaseArea(current: Area, row: DbArea): Area {
-  const effective = effectiveStatus(row.current_status, row.status_valid_until);
+  const effective = row.effective_status;
   return {
     ...current,
     id: row.id,
     name: row.name,
-    declaredStatus: row.current_status,
+    declaredStatus: row.declared_status,
     status: effective,
     statusUpdatedAt: row.status_updated_at,
     statusValidUntil: row.status_valid_until,
+    operationalPeriodPhase: row.operational_period_phase,
+    operationalPeriodStartsAt: row.operational_period_starts_at,
+    operationalPeriodEndsAt: row.operational_period_ends_at,
+    operationalPeriodReference: row.operational_period_reference,
+    operationalPeriodSource: row.operational_period_source,
     period: row.promulgated_period,
     limits: `${row.lower_limit} – ${row.upper_limit}`,
     authority: row.authority,
@@ -103,10 +119,7 @@ export default function Home() {
     let active = true;
 
     async function loadStatuses() {
-      const { data, error } = await supabase
-        .from('danger_areas')
-        .select(`id,code,name,lower_limit,upper_limit,promulgated_period,authority,airspace_when_inactive,current_status,status_updated_at,status_valid_until`)
-        .order('code');
+      const { data, error } = await supabase.rpc('get_public_operational_picture');
 
       if (!active) return;
       if (error || !data) {
@@ -127,19 +140,21 @@ export default function Home() {
 
     const channel = supabase
       .channel('public-danger-area-status')
-      .on('postgres_changes', {event:'UPDATE',schema:'public',table:'danger_areas'}, payload => {
-        const row = payload.new as DbArea;
-        if (!row?.code) return;
-        setAreas(current => current.map(area => area.code === row.code ? mergeDatabaseArea(area, row) : area));
-        setConnectionState('LIVE');
+      .on('postgres_changes', {event:'UPDATE',schema:'public',table:'danger_areas'}, () => {
+        void loadStatuses();
       })
       .subscribe(status => {
         if (status === 'SUBSCRIBED') setConnectionState('LIVE');
         if (status === 'CHANNEL_ERROR' || status === 'TIMED_OUT') setConnectionState('DEGRADED');
       });
 
+    const refreshTimer = window.setInterval(() => {
+      void loadStatuses();
+    }, 60000);
+
     return () => {
       active = false;
+      window.clearInterval(refreshTimer);
       supabase.removeChannel(channel);
     };
   }, []);
@@ -225,7 +240,7 @@ export default function Home() {
 
   return (
     <div className="app">
-      <div className="demo-banner">DASS ALPHA 0.3.1 · DEMONSTRATION ONLY · NOT FOR OPERATIONAL USE OR FLIGHT PLANNING</div>
+      <div className="demo-banner">DASS ALPHA 0.8.0 · DEMONSTRATION ONLY · NOT FOR OPERATIONAL USE OR FLIGHT PLANNING</div>
 
       <header>
         <div className="brand">
@@ -299,6 +314,18 @@ export default function Home() {
               </div>
 
               <div className="data-grid">
+                <div className="data">
+                  <span>Operational period</span>
+                  <strong>{selected.operationalPeriodPhase ?? 'NONE SCHEDULED'}</strong>
+                </div>
+                <div className="data">
+                  <span>Period window</span>
+                  <strong>
+                    {selected.operationalPeriodStartsAt && selected.operationalPeriodEndsAt
+                      ? `${formatUtc(selected.operationalPeriodStartsAt)} – ${formatUtc(selected.operationalPeriodEndsAt)}`
+                      : '—'}
+                  </strong>
+                </div>
                 <div className="data"><span>Promulgated activity</span><strong>{selected.period}</strong></div>
                 <div className="data"><span>Vertical limits</span><strong>{selected.limits}</strong></div>
                 <div className="data"><span>Last declaration</span><strong>{selected.declaredStatus}</strong></div>
@@ -310,7 +337,10 @@ export default function Home() {
               </div>
 
               <div className="source">
-                Status source: live DASS Alpha database · Geometry remains illustrative demonstration data and does not represent authoritative UK airspace boundaries.
+                Status source: live DASS Alpha database
+                {selected.operationalPeriodSource ? ` · Period source: ${selected.operationalPeriodSource}` : ''}
+                {selected.operationalPeriodReference ? ` · Reference: ${selected.operationalPeriodReference}` : ''}
+                {' · '}Geometry remains illustrative demonstration data and does not represent authoritative UK airspace boundaries.
               </div>
             </div>
           )}
