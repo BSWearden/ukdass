@@ -8,6 +8,7 @@
     "start": "next start"
   },
   "dependencies": {
+    "@napi-rs/canvas": "1.0.6",
     "@supabase/ssr": "0.12.4",
     "@supabase/supabase-js": "2.111.0",
     "leaflet": "1.9.4",
