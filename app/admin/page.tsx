@@ -3,6 +3,7 @@ import { createClient } from '../../lib/supabase/server'
 import { adminLogout } from './actions'
 import AdminOperatorControls from './components/AdminOperatorControls'
 import ExceptionEnginePreview from './components/ExceptionEnginePreview'
+import OperationalPeriodsPreview from '../components/OperationalPeriodsPreview'
 
 type OperatorProfile={user_id:string;display_name:string;organisation_id:string|null;account_status:string;must_change_password:boolean;created_at:string;updated_at:string;suspension_reason:string|null;suspended_at:string|null;reactivated_at:string|null;credentials_issued_at:string|null;password_reset_at:string|null}
 type Organisation={id:string;name:string}
@@ -62,6 +63,8 @@ export default async function AdminPage(){
     <section style={{marginTop:'18px',display:'grid',gridTemplateColumns:'repeat(auto-fit,minmax(150px,1fr))',gap:'10px'}}>
       <Summary label="Operators" value={String(operators.length)} accent="#d7e5ed"/><Summary label="Active operators" value={String(activeOperators)} accent="#84e8b0"/><Summary label="Danger Areas" value={String(areas.length)} accent="#d7e5ed"/><Summary label="Currently active" value={String(activeAreas)} accent={activeAreas?'#ff9299':'#84e8b0'}/><Summary label="Unverified" value={String(unverifiedAreas)} accent={unverifiedAreas?'#fbbf24':'#84e8b0'}/><Summary label="Unack. alerts" value={String(unack)} accent={unack?'#fbbf24':'#84e8b0'}/><Summary label="Failed email" value={String(failedNotifications)} accent={failedNotifications?'#ff9299':'#84e8b0'}/>
     </section>
+
+    <OperationalPeriodsPreview mode="admin"/>
 
     <AdminOperatorControls organisations={organisations} areas={areas.map(a=>({id:a.id,code:a.code,name:a.name}))} operators={enhancedOperators} permissions={permissions} audits={audits}/>
 

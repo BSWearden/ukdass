@@ -3,6 +3,7 @@ import { createClient } from '../../lib/supabase/server'
 import { logout } from './actions'
 import OperationalDashboard from './components/OperationalDashboard'
 import OperatorPeriodBasis from './components/OperatorPeriodBasis'
+import OperationalPeriodsPreview from '../components/OperationalPeriodsPreview'
 
 type Status='ACTIVE'|'INACTIVE'|'UNVERIFIED'
 
@@ -140,6 +141,7 @@ export default async function OperatorPage(){
 
   return(
     <>
+      <OperationalPeriodsPreview mode="operator"/>
       <OperatorPeriodBasis assigned={assigned}/>
       <OperationalDashboard
         operatorName={profile.display_name}
