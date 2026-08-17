@@ -63,6 +63,7 @@ export default function StatusControls({
   const [overrideReason, setOverrideReason] = useState('')
   const [confirmedDesignator, setConfirmedDesignator] = useState('')
   const [overrideAccepted, setOverrideAccepted] = useState(false)
+  const [declarationValidUntil, setDeclarationValidUntil] = useState('')
 
   if (!canChangeStatus) {
     return (
@@ -79,6 +80,7 @@ export default function StatusControls({
     setOverrideReason('')
     setConfirmedDesignator('')
     setOverrideAccepted(false)
+    setDeclarationValidUntil('')
   }
 
   function submitStatus() {
@@ -92,6 +94,7 @@ export default function StatusControls({
     formData.set('notam_override', String(needsOverride && overrideAccepted))
     formData.set('override_reason', overrideReason)
     formData.set('confirmed_designator', confirmedDesignator)
+    formData.set('declaration_valid_until', declarationValidUntil ? `${declarationValidUntil}:00Z` : '')
 
     setError('')
     startTransition(async () => {
@@ -438,48 +441,11 @@ export default function StatusControls({
     )
   }
 
-  if (!reportingWindowOpen) {
-    return (
-      <div
-        style={{
-          marginTop: '15px',
-          border: '1px solid rgba(255,186,74,.30)',
-          background: 'rgba(255,186,74,.06)',
-          borderRadius: '10px',
-          padding: '12px',
-        }}
-      >
-        <div
-          style={{
-            color: '#ffd07d',
-            fontSize: '10px',
-            textTransform: 'uppercase',
-            letterSpacing: '.12em',
-            fontWeight: 850,
-          }}
-        >
-          Status controls locked
-        </div>
-        <div
-          style={{
-            marginTop: '6px',
-            color: '#cbbd9d',
-            fontSize: '11px',
-            lineHeight: 1.55,
-          }}
-        >
-          The reporting window ({reportingWindowLabel}) is not open. The
-          pre-activation option becomes available {preActivationLeadMinutes}{' '}
-          minutes before the planned start.
-        </div>
-      </div>
-    )
-  }
-
   const standingDown = intent === 'INACTIVE'
 
   return (
     <div style={{ marginTop: '15px' }}>
+      {!reportingWindowOpen&&<div style={{marginBottom:'10px',border:'1px solid rgba(255,186,74,.35)',background:'rgba(255,186,74,.06)',borderRadius:'9px',padding:'10px',fontSize:'10px',lineHeight:1.5,color:'#e6ca96'}}><strong>No reporting window is open.</strong> An authorised operator may still make an explicitly time-limited declaration. Activation without a live NOTAM also requires the separate audited NOTAM override.</div>}
       <div
         style={{
           display: 'grid',
@@ -606,6 +572,13 @@ export default function StatusControls({
             </div>
           )}
 
+          {!reportingWindowOpen&&(
+            <label style={{fontSize:'11px',color:'#e6ca96',display:'grid',gap:'5px',marginBottom:'12px'}}>Declaration valid until (UTC)
+              <input type="datetime-local" value={declarationValidUntil} min={new Date().toISOString().slice(0,16)} max={new Date(Date.now()+86400000).toISOString().slice(0,16)} onChange={e=>setDeclarationValidUntil(e.target.value)} style={{background:'#08131c',border:'1px solid #725c35',borderRadius:'8px',color:'#edf5fb',padding:'9px',font:'inherit'}}/>
+              <span style={{fontSize:'9px',color:'#a99065'}}>Required outside a reporting window; maximum 24 hours. Times are interpreted as UTC.</span>
+            </label>
+          )}
+
           <label
             style={{
               display: 'grid',
@@ -659,7 +632,7 @@ export default function StatusControls({
 
             <button
               type="button"
-              disabled={isPending || (!standingDown && !hasLiveNotam && (!overrideAccepted || confirmedDesignator.trim().toUpperCase()!==code.toUpperCase() || overrideReason.trim().length<10))}
+              disabled={isPending || (!reportingWindowOpen&&!declarationValidUntil) || (!standingDown && !hasLiveNotam && (!overrideAccepted || confirmedDesignator.trim().toUpperCase()!==code.toUpperCase() || overrideReason.trim().length<10))}
               onClick={submitStatus}
               style={{
                 background: standingDown ? '#4b3820' : '#17384b',
