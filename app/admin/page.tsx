@@ -29,7 +29,7 @@ export default async function AdminPage(){
     supabase.from('operator_profiles').select('user_id,display_name,organisation_id,account_status,must_change_password,created_at,updated_at,suspension_reason,suspended_at,reactivated_at,credentials_issued_at,password_reset_at').order('display_name',{ascending:true}),
     supabase.from('organisations').select('id,name').order('name',{ascending:true}),
     supabase.from('operator_permissions').select('user_id,danger_area_id,can_change_status,created_at'),
-    supabase.from('danger_areas').select('id,code,name,current_status,status_updated_at,status_valid_until,reporting_window_start_at,reporting_window_end_at,scheduled_activation_at,organisation_id').order('code',{ascending:true}),
+    supabase.from('danger_areas').select('id,code,name,current_status,status_updated_at,status_valid_until,reporting_window_start_at,reporting_window_end_at,scheduled_activation_at,organisation_id').eq('aip_current',true).order('code',{ascending:true}),
     supabase.from('status_events').select('id,danger_area_id,previous_status,new_status,changed_by,changed_at,note,event_source,event_type').order('changed_at',{ascending:false}).limit(100),
     supabase.from('operational_notifications').select('id,danger_area_id,user_id,notification_type,status,attempts,sent_at,seen_at,acknowledged_at,created_at').order('created_at',{ascending:false}).limit(30),
     supabase.from('admin_audit_log').select('id,admin_user_id,action_type,target_user_id,danger_area_id,summary,metadata,created_at').order('created_at',{ascending:false}).limit(100),

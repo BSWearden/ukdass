@@ -124,6 +124,7 @@ export default function OperationalPeriodsPreview({mode}:Props){
     const areaPromise=supabase
       .from('danger_areas')
       .select('id,code,name')
+      .eq('aip_current',true)
       .order('code',{ascending:true})
 
     const assurancePromise=supabase

@@ -1,8 +1,9 @@
 import { redirect } from 'next/navigation'
 import { createClient } from '../../../lib/supabase/server'
 import AipImportClient from './AipImportClient'
+import AipPublishClient from './AipPublishClient'
 
-type ImportRun={id:string;source_file:string;source_sha256:string;airac_effective_date:string;record_count:number;import_status:string;validation_summary:Record<string,number>;created_at:string;completed_at:string|null}
+type ImportRun={id:string;source_file:string;source_sha256:string;airac_effective_date:string;record_count:number;import_status:string;validation_summary:Record<string,number|string>;created_at:string;completed_at:string|null;published_at:string|null}
 type StagedArea={id:string;designator:string;name:string;lower_limit:string;upper_limit:string;promulgated_period:string;authority:string|null;geometry_segment_types:string[];rendered_vertex_count:number;validation_status:string}
 
 export const dynamic='force-dynamic'
@@ -16,7 +17,7 @@ export default async function AipImportPage(){
   const {data:admin}=await supabase.from('admin_profiles').select('display_name,admin_role,account_status').eq('user_id',userData.user.id).maybeSingle()
   if(!admin||admin.account_status!=='ACTIVE')redirect('/admin')
 
-  const {data:runData,error:runError}=await supabase.from('aip_import_runs').select('id,source_file,source_sha256,airac_effective_date,record_count,import_status,validation_summary,created_at,completed_at').order('created_at',{ascending:false}).limit(10)
+  const {data:runData,error:runError}=await supabase.from('aip_import_runs').select('id,source_file,source_sha256,airac_effective_date,record_count,import_status,validation_summary,created_at,completed_at,published_at').order('created_at',{ascending:false}).limit(10)
   if(runError)throw new Error('Unable to load AIP import history.')
   const runs=(runData??[]) as ImportRun[]
   const latest=runs[0]??null
@@ -32,14 +33,16 @@ export default async function AipImportPage(){
 
   return <main style={{minHeight:'100vh',background:'#071019',color:'#edf5fb',padding:'clamp(14px,3vw,26px)'}}><div style={{maxWidth:'1280px',margin:'0 auto'}}>
     <header style={{display:'flex',justifyContent:'space-between',alignItems:'center',gap:'16px',flexWrap:'wrap',paddingBottom:'18px',borderBottom:'1px solid #203243'}}>
-      <div><div style={{fontSize:'10px',letterSpacing:'.16em',textTransform:'uppercase',color:'#7f9db0',fontWeight:850}}>DASS Alpha 1.0.0 · Aeronautical data assurance</div><h1 style={{margin:'5px 0 4px',fontSize:'clamp(25px,5vw,32px)'}}>AIP Import Management</h1><div style={{fontSize:'13px',color:'#91a6b8'}}>{admin.display_name} · {admin.admin_role}</div></div>
+      <div><div style={{fontSize:'10px',letterSpacing:'.16em',textTransform:'uppercase',color:'#7f9db0',fontWeight:850}}>DASS Alpha 1.0.2 · Aeronautical data assurance</div><h1 style={{margin:'5px 0 4px',fontSize:'clamp(25px,5vw,32px)'}}>AIP Import Management</h1><div style={{fontSize:'13px',color:'#91a6b8'}}>{admin.display_name} · {admin.admin_role}</div></div>
       <div style={{display:'flex',gap:'9px'}}><a href="/admin" style={nav}>Administrator dashboard</a><a href="/" style={nav}>Live map</a></div>
     </header>
 
     <div style={{marginTop:'18px'}}><AipImportClient/></div>
+    {latest?.import_status==='VALIDATED'&&<AipPublishClient runId={latest.id} sourceFile={latest.source_file} airacEffectiveDate={latest.airac_effective_date} recordCount={latest.record_count}/>} 
+    {latest?.import_status==='PUBLISHED'&&<section style={{marginTop:'18px',border:'1px solid rgba(79,209,139,.4)',background:'rgba(79,209,139,.07)',borderRadius:'14px',padding:'16px'}}><strong style={{color:'#84e8b0',fontSize:'12px'}}>Current AIP dataset published</strong><div style={{marginTop:'5px',fontSize:'11px',color:'#a9bdc9'}}>{latest.source_file} · AIRAC {latest.airac_effective_date} · {utc(latest.published_at)}</div></section>}
 
     <section style={{marginTop:'18px',display:'grid',gridTemplateColumns:'repeat(auto-fit,minmax(150px,1fr))',gap:'10px'}}>
-      <Summary label="Latest status" value={latest?.import_status??'NO IMPORT'}/><Summary label="Staged areas" value={String(areas.length)}/><Summary label="NOTAM activated" value={String(notam)}/><Summary label="Schedule not structured" value={String(unstructured)}/><Summary label="Rendered vertices" value={String(areas.reduce((sum,area)=>sum+area.rendered_vertex_count,0))}/>
+      <Summary label="Latest status" value={latest?.import_status??'NO IMPORT'}/><Summary label="Dataset areas" value={String(areas.length)}/><Summary label="NOTAM activated" value={String(notam)}/><Summary label="Schedule not structured" value={String(unstructured)}/><Summary label="Rendered vertices" value={String(areas.reduce((sum,area)=>sum+area.rendered_vertex_count,0))}/>
     </section>
 
     <section style={{marginTop:'24px'}}><h2 style={{fontSize:'19px',margin:'0 0 10px'}}>Import history</h2><div style={box}>{runs.length===0?<Empty text="No AIP datasets have been staged yet."/>:runs.map((run,index)=><div key={run.id} style={{padding:'12px 14px',borderTop:index?'1px solid #182b38':0}}><div style={{display:'flex',justifyContent:'space-between',gap:'12px',flexWrap:'wrap'}}><strong style={{fontSize:'12px'}}>{run.source_file}</strong><span style={{fontSize:'10px',color:run.import_status==='VALIDATED'?'#84e8b0':'#fbbf24',fontWeight:900}}>{run.import_status}</span></div><div style={{marginTop:'5px',fontSize:'10px',color:'#91a6b8'}}>AIRAC {run.airac_effective_date} · {run.record_count} expected records · created {utc(run.created_at)}</div><div style={{marginTop:'4px',fontSize:'9px',color:'#607888',wordBreak:'break-all'}}>SHA-256: {run.source_sha256}</div></div>)}</div></section>
