@@ -2,6 +2,7 @@
 
 import { useEffect } from 'react'
 import './operator-mobile.css'
+import OperationalPeriodsPreview from '../components/OperationalPeriodsPreview'
 
 export default function OperatorLayout({
   children,
@@ -21,5 +22,10 @@ export default function OperatorLayout({
     }
   }, [])
 
-  return <div className="dass-operator-route">{children}</div>
+  return (
+    <div className="dass-operator-route">
+      <OperationalPeriodsPreview mode="operator" />
+      {children}
+    </div>
+  )
 }

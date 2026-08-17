@@ -1,5 +1,6 @@
 import type { Metadata } from 'next'
 import './admin.css'
+import OperationalPeriodsPreview from '../components/OperationalPeriodsPreview'
 
 export const metadata: Metadata = {
   title: 'DASS Administration',
@@ -13,6 +14,7 @@ export default function AdminLayout({
 }>) {
   return (
     <div className="dass-admin-scroll-shell">
+      <OperationalPeriodsPreview mode="admin" />
       {children}
     </div>
   )
