@@ -69,6 +69,7 @@ export default function OperationalPeriodsPreview({mode}:Props){
   const [areas,setAreas]=useState<Area[]>([])
   const [loading,setLoading]=useState(true)
   const [error,setError]=useState('')
+  const [modalError,setModalError]=useState('')
   const [working,setWorking]=useState(false)
   const [showCreate,setShowCreate]=useState(false)
   const [editing,setEditing]=useState<Period|null>(null)
@@ -122,11 +123,18 @@ export default function OperationalPeriodsPreview({mode}:Props){
     const {data,error}=await supabase.functions.invoke('admin-operational-period-management',{body})
     setWorking(false)
     if(error){
-      setError(error.message||'Operational period request failed.')
+      const message=error.message||'Operational period request failed.'
+      setError(message)
+      setModalError(message)
       return null
     }
     if(data?.error){
-      setError(String(data.error))
+      const raw=String(data.error)
+      const message=raw.toLowerCase().includes('overlap')
+        ? 'Operational period conflict: this Danger Area already has a PLANNED period that overlaps the selected UTC times. Amend the times or cancel the existing period before creating another.'
+        : raw
+      setError(message)
+      setModalError(message)
       return null
     }
     return data
@@ -140,6 +148,7 @@ export default function OperationalPeriodsPreview({mode}:Props){
     setNotes('')
     setShowCreate(true)
     setError('')
+    setModalError('')
   }
 
   function openEdit(period:Period){
@@ -149,6 +158,7 @@ export default function OperationalPeriodsPreview({mode}:Props){
     setReference(period.reference??'')
     setNotes(period.notes??'')
     setError('')
+    setModalError('')
   }
 
   async function createPeriod(){
@@ -168,7 +178,9 @@ export default function OperationalPeriodsPreview({mode}:Props){
       setShowCreate(false)
       await load()
     }catch(err){
-      setError(err instanceof Error?err.message:'Invalid operational period.')
+      const message=err instanceof Error?err.message:'Invalid operational period.'
+      setError(message)
+      setModalError(message)
     }
   }
 
@@ -189,7 +201,9 @@ export default function OperationalPeriodsPreview({mode}:Props){
       setEditing(null)
       await load()
     }catch(err){
-      setError(err instanceof Error?err.message:'Invalid operational period.')
+      const message=err instanceof Error?err.message:'Invalid operational period.'
+      setError(message)
+      setModalError(message)
     }
   }
 
@@ -197,7 +211,9 @@ export default function OperationalPeriodsPreview({mode}:Props){
     if(!cancelling)return
     const reason=cancelReason.trim()
     if(reason.length<5){
-      setError('Enter a meaningful cancellation reason.')
+      const message='Enter a meaningful cancellation reason.'
+      setError(message)
+      setModalError(message)
       return
     }
     const data=await invoke({
@@ -291,7 +307,7 @@ export default function OperationalPeriodsPreview({mode}:Props){
                     {mode==='admin'&&period.period_status==='PLANNED'&&(
                       <div style={{display:'grid',gridTemplateColumns:'1fr 1fr',gap:'6px',marginTop:'9px'}}>
                         <button onClick={()=>openEdit(period)} style={smallButton}>Amend</button>
-                        <button onClick={()=>{setCancelling(period);setCancelReason('');setError('')}} style={{...smallButton,borderColor:'rgba(255,90,100,.45)',color:'#ffb1b6'}}>Cancel</button>
+                        <button onClick={()=>{setCancelling(period);setCancelReason('');setError('');setModalError('')}} style={{...smallButton,borderColor:'rgba(255,90,100,.45)',color:'#ffb1b6'}}>Cancel</button>
                       </div>
                     )}
                   </article>
@@ -314,6 +330,7 @@ export default function OperationalPeriodsPreview({mode}:Props){
           <Field label="Reference / NOTAM identifier (optional)"><input value={reference} onChange={e=>setReference(e.target.value.slice(0,120))} style={input}/></Field>
           <Field label="Administrative notes (optional)"><textarea value={notes} onChange={e=>setNotes(e.target.value.slice(0,1000))} rows={3} style={{...input,resize:'vertical'}}/></Field>
           <div style={notice}><strong>Important:</strong> creating this record establishes a promulgated operational period in DASS only. It does not declare the Danger Area ACTIVE.</div>
+          {modalError&&<ModalError message={modalError}/>}
           <button disabled={working} onClick={createPeriod} style={primaryButton}>{working?'Creating…':'Create operational period'}</button>
         </Modal>
       )}
@@ -324,6 +341,7 @@ export default function OperationalPeriodsPreview({mode}:Props){
           <Field label="Reference / NOTAM identifier (optional)"><input value={reference} onChange={e=>setReference(e.target.value.slice(0,120))} style={input}/></Field>
           <Field label="Administrative notes (optional)"><textarea value={notes} onChange={e=>setNotes(e.target.value.slice(0,1000))} rows={3} style={{...input,resize:'vertical'}}/></Field>
           <div style={notice}>The previous values will be retained in the immutable Operational Period history. Amendment does not change DA operational state.</div>
+          {modalError&&<ModalError message={modalError}/>}
           <button disabled={working} onClick={amendPeriod} style={primaryButton}>{working?'Saving…':'Save amendment'}</button>
         </Modal>
       )}
@@ -334,6 +352,7 @@ export default function OperationalPeriodsPreview({mode}:Props){
           <Field label="Cancellation reason">
             <textarea value={cancelReason} onChange={e=>setCancelReason(e.target.value.slice(0,500))} rows={4} style={{...input,resize:'vertical'}}/>
           </Field>
+          {modalError&&<ModalError message={modalError}/>}
           <button disabled={working} onClick={cancelPeriod} style={{...primaryButton,background:'#8f2932',borderColor:'#d2545e'}}>{working?'Cancelling…':'Confirm cancellation'}</button>
         </Modal>
       )}
@@ -346,6 +365,26 @@ function UtcFields({startsAt,endsAt,setStartsAt,setEndsAt}:{startsAt:string;ends
     <div style={{display:'grid',gridTemplateColumns:'1fr 1fr',gap:'8px'}}>
       <Field label="Starts (UTC)"><input type="datetime-local" value={startsAt} onChange={e=>setStartsAt(e.target.value)} style={input}/></Field>
       <Field label="Ends (UTC)"><input type="datetime-local" value={endsAt} onChange={e=>setEndsAt(e.target.value)} style={input}/></Field>
+    </div>
+  )
+}
+
+function ModalError({message}:{message:string}){
+  return(
+    <div role="alert" aria-live="assertive" style={{
+      border:'1px solid rgba(255,90,100,.62)',
+      background:'rgba(255,90,100,.11)',
+      borderRadius:'9px',
+      padding:'11px 12px',
+      color:'#ffd0d3',
+      boxShadow:'0 0 0 1px rgba(255,90,100,.08)'
+    }}>
+      <div style={{fontSize:'9px',fontWeight:900,letterSpacing:'.10em',color:'#ff9299'}}>
+        PERIOD NOT CREATED
+      </div>
+      <div style={{marginTop:'5px',fontSize:'10px',lineHeight:1.5}}>
+        {message}
+      </div>
     </div>
   )
 }
