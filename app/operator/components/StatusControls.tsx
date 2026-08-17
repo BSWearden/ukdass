@@ -18,6 +18,9 @@ type Props = {
   preActivationLeadMinutes: number
   activationScheduled: boolean
   scheduledActivationAt: string | null
+  hasLiveNotam: boolean
+  notamNumber: string | null
+  notamFeedState: string
 }
 
 function formatUtc(value: string | null) {
@@ -47,6 +50,9 @@ export default function StatusControls({
   preActivationLeadMinutes,
   activationScheduled,
   scheduledActivationAt,
+  hasLiveNotam,
+  notamNumber,
+  notamFeedState,
 }: Props) {
   const [intent, setIntent] = useState<
     'ACTIVE' | 'INACTIVE' | 'SCHEDULE' | 'CANCEL_SCHEDULE' | null
@@ -54,6 +60,9 @@ export default function StatusControls({
   const [note, setNote] = useState('')
   const [isPending, startTransition] = useTransition()
   const [error, setError] = useState('')
+  const [overrideReason, setOverrideReason] = useState('')
+  const [confirmedDesignator, setConfirmedDesignator] = useState('')
+  const [overrideAccepted, setOverrideAccepted] = useState(false)
 
   if (!canChangeStatus) {
     return (
@@ -67,6 +76,9 @@ export default function StatusControls({
     setIntent(null)
     setNote('')
     setError('')
+    setOverrideReason('')
+    setConfirmedDesignator('')
+    setOverrideAccepted(false)
   }
 
   function submitStatus() {
@@ -76,6 +88,10 @@ export default function StatusControls({
     formData.set('area_id', areaId)
     formData.set('new_status', intent)
     formData.set('note', note)
+    const needsOverride = intent === 'ACTIVE' && !hasLiveNotam
+    formData.set('notam_override', String(needsOverride && overrideAccepted))
+    formData.set('override_reason', overrideReason)
+    formData.set('confirmed_designator', confirmedDesignator)
 
     setError('')
     startTransition(async () => {
@@ -570,6 +586,26 @@ export default function StatusControls({
             </div>
           )}
 
+          {!standingDown && (
+            <div style={{borderLeft:`3px solid ${hasLiveNotam?'#4fd18b':'#ff5a64'}`,paddingLeft:'10px',marginBottom:'12px',color:hasLiveNotam?'#a9e8c5':'#ffc0c4',fontSize:'11px',lineHeight:1.55}}>
+              {hasLiveNotam
+                ? `Live matched NOTAM: ${notamNumber ?? 'verified record'}.`
+                : `NO LIVE MATCHED NOTAM FOR ${code}. Feed state: ${notamFeedState}. Check NOTAM submission validity before continuing.`}
+            </div>
+          )}
+
+          {!standingDown && !hasLiveNotam && (
+            <div style={{display:'grid',gap:'9px',marginBottom:'12px',padding:'12px',border:'1px solid rgba(255,90,100,.38)',borderRadius:'9px',background:'rgba(255,90,100,.055)'}}>
+              <label style={{fontSize:'11px',color:'#c9d5dc',display:'grid',gap:'5px'}}>Operational override reason (required)
+                <textarea value={overrideReason} onChange={e=>setOverrideReason(e.target.value.slice(0,500))} rows={3} maxLength={500} placeholder="Explain why activation is required without a verified NOTAM" style={{background:'#08131c',border:'1px solid #604047',borderRadius:'8px',color:'#edf5fb',padding:'9px',font:'inherit'}}/>
+              </label>
+              <label style={{fontSize:'11px',color:'#c9d5dc',display:'grid',gap:'5px'}}>Type {code} to confirm
+                <input value={confirmedDesignator} onChange={e=>setConfirmedDesignator(e.target.value.toUpperCase().slice(0,20))} style={{background:'#08131c',border:'1px solid #604047',borderRadius:'8px',color:'#edf5fb',padding:'9px',font:'inherit'}}/>
+              </label>
+              <label style={{fontSize:'11px',color:'#ffc0c4',display:'flex',gap:'8px',alignItems:'flex-start'}}><input type="checkbox" checked={overrideAccepted} onChange={e=>setOverrideAccepted(e.target.checked)}/><span>I have checked the NOTAM submission/validity and authorise this recorded activation override.</span></label>
+            </div>
+          )}
+
           <label
             style={{
               display: 'grid',
@@ -623,7 +659,7 @@ export default function StatusControls({
 
             <button
               type="button"
-              disabled={isPending}
+              disabled={isPending || (!standingDown && !hasLiveNotam && (!overrideAccepted || confirmedDesignator.trim().toUpperCase()!==code.toUpperCase() || overrideReason.trim().length<10))}
               onClick={submitStatus}
               style={{
                 background: standingDown ? '#4b3820' : '#17384b',

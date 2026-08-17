@@ -25,6 +25,11 @@ type Area = {
   airspace: string;
   color: string;
   coords: [number, number][];
+  hasLiveNotam: boolean;
+  notamNumber: string | null;
+  notamValidUntil: string | null;
+  notamFeedState: string;
+  visibilityReason: string;
 };
 
 type DbArea = {
@@ -46,6 +51,11 @@ type DbArea = {
   operational_period_ends_at: string | null;
   operational_period_reference: string | null;
   operational_period_source: string | null;
+  has_live_notam: boolean;
+  notam_number: string | null;
+  notam_valid_until: string | null;
+  notam_feed_state: string;
+  visibility_reason: string;
 };
 
 function effectiveStatus(declared: Status, validUntil: string | null): Status {
@@ -95,7 +105,12 @@ function databaseArea(row: DbArea): Area {
     authority: row.authority,
     airspace: row.airspace_when_inactive,
     color: statusColor(effective),
-    coords: row.geometry
+    coords: row.geometry,
+    hasLiveNotam: row.has_live_notam,
+    notamNumber: row.notam_number,
+    notamValidUntil: row.notam_valid_until,
+    notamFeedState: row.notam_feed_state,
+    visibilityReason: row.visibility_reason
   };
 }
 
@@ -114,7 +129,7 @@ export default function Home() {
     let active = true;
 
     async function loadStatuses() {
-      const { data, error } = await supabase.rpc('get_public_operational_picture_v2');
+      const { data, error } = await supabase.rpc('get_public_operational_picture_v3');
 
       if (!active) return;
       if (error || !data) {
@@ -342,6 +357,8 @@ export default function Home() {
                 <div className="data"><span>Vertical limits</span><strong>{selected.limits}</strong></div>
                 <div className="data"><span>Last declaration</span><strong>{selected.declaredStatus}</strong></div>
                 <div className="data"><span>Validity deadline</span><strong>{selected.statusValidUntil ? formatUtcTime(selected.statusValidUntil) : 'NONE'}</strong></div>
+                <div className="data"><span>NOTAM assurance</span><strong>{selected.hasLiveNotam ? selected.notamNumber ?? 'LIVE MATCH' : 'NO LIVE MATCH'}</strong></div>
+                <div className="data"><span>NOTAM feed</span><strong>{selected.notamFeedState}</strong></div>
               </div>
 
               <div className="notice">
@@ -349,7 +366,7 @@ export default function Home() {
               </div>
 
               <div className="source">
-                Status source: live DASS Alpha database
+                Status source: live DASS Alpha database · Visibility: {selected.visibilityReason}
                 {selected.operationalPeriodSource ? ` · Period source: ${selected.operationalPeriodSource}` : ''}
                 {selected.operationalPeriodReference ? ` · Reference: ${selected.operationalPeriodReference}` : ''}
                 {' · '}Geometry remains illustrative demonstration data and does not represent authoritative UK airspace boundaries.

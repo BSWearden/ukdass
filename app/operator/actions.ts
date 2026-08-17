@@ -72,6 +72,9 @@ export async function changeDangerAreaStatus(
   const areaId = String(formData.get('area_id') ?? '')
   const newStatus = String(formData.get('new_status') ?? '')
   const note = String(formData.get('note') ?? '').trim()
+  const notamOverride = String(formData.get('notam_override') ?? '') === 'true'
+  const overrideReason = String(formData.get('override_reason') ?? '').trim()
+  const confirmedDesignator = String(formData.get('confirmed_designator') ?? '').trim()
 
   if (!areaId) return { ok: false, message: 'Missing Danger Area identifier.' }
   if (!['ACTIVE', 'INACTIVE'].includes(newStatus)) {
@@ -82,14 +85,20 @@ export async function changeDangerAreaStatus(
   const { data: claimsData } = await supabase.auth.getClaims()
   if (!claimsData?.claims?.sub) redirect('/operator/login')
 
-  const { error } = await supabase.rpc('request_danger_area_status_change', {
+  const { error } = await supabase.rpc('request_danger_area_status_change_v2', {
     p_danger_area_id: areaId,
     p_new_status: newStatus,
     p_note: note || null,
+    p_notam_override: notamOverride,
+    p_override_reason: overrideReason || null,
+    p_confirmed_designator: confirmedDesignator || null,
   })
 
   if (error) {
     const raw = error.message || ''
+    if (raw.includes('NOTAM_OVERRIDE_REQUIRED')) return {ok:false,message:'No live matched NOTAM is held for this Danger Area. Use the explicit NOTAM override confirmation if activation is operationally required.'}
+    if (raw.includes('NOTAM_OVERRIDE_DESIGNATOR_MISMATCH')) return {ok:false,message:'The typed Danger Area designator does not match.'}
+    if (raw.includes('NOTAM_OVERRIDE_REASON_REQUIRED')) return {ok:false,message:'Enter an operational reason of at least 10 characters.'}
     if (raw.includes('Reporting window is closed')) {
       return { ok:false, message:'This Danger Area is outside its current reporting window. No ACTIVE or INACTIVE declaration has been recorded.' }
     }
