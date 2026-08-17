@@ -2,6 +2,7 @@ import { redirect } from 'next/navigation'
 import { createClient } from '../../lib/supabase/server'
 import { adminLogout } from './actions'
 import AdminOperatorControls from './components/AdminOperatorControls'
+import ExceptionEnginePreview from './components/ExceptionEnginePreview'
 
 type OperatorProfile={user_id:string;display_name:string;organisation_id:string|null;account_status:string;must_change_password:boolean;created_at:string;updated_at:string;suspension_reason:string|null;suspended_at:string|null;reactivated_at:string|null;credentials_issued_at:string|null;password_reset_at:string|null}
 type Organisation={id:string;name:string}
@@ -63,6 +64,8 @@ export default async function AdminPage(){
     </section>
 
     <AdminOperatorControls organisations={organisations} areas={areas.map(a=>({id:a.id,code:a.code,name:a.name}))} operators={enhancedOperators} permissions={permissions} audits={audits}/>
+
+    <ExceptionEnginePreview/>
 
     <section style={{marginTop:'26px'}}><Heading eyebrow="Operational oversight" title="Danger Area State"/><div style={{display:'grid',gridTemplateColumns:'repeat(auto-fit,minmax(280px,1fr))',gap:'10px'}}>{areas.map(a=>{const s=badge(a.current_status);return <article key={a.id} style={card}><div style={{display:'flex',justifyContent:'space-between',gap:'10px'}}><div><strong style={{color:'#8fdaf0'}}>{a.code}</strong><div style={{marginTop:'3px',fontSize:'11px',color:'#91a6b8'}}>{a.name}</div></div><span style={{fontSize:'9px',fontWeight:900,padding:'5px 8px',borderRadius:'999px',color:s.color,background:s.background,border:`1px solid ${s.border}`}}>{a.current_status}</span></div><div style={{marginTop:'12px',display:'grid',gridTemplateColumns:'1fr 1fr',gap:'7px'}}><Data label="Last status update" value={utc(a.status_updated_at)}/><Data label="Valid until" value={utc(a.status_valid_until)}/><Data label="Window opens" value={utc(a.reporting_window_start_at)}/><Data label="Window closes" value={utc(a.reporting_window_end_at)}/><Data label="Scheduled activation" value={utc(a.scheduled_activation_at)}/><Data label="Organisation" value={a.organisation_id?orgMap.get(a.organisation_id)?.name??'Unknown':'—'}/></div></article>})}</div></section>
 
