@@ -42,6 +42,8 @@ export type AssignedArea={
   notam_valid_until:string|null
   notam_feed_state:'UNINITIALISED'|'CURRENT'|'STALE'|'FAILED'|'PARTIAL'
   notam_visibility_mode:'MONITOR'|'ENFORCED'
+  has_published_notam:boolean
+  notam_phase:'CURRENT'|'UPCOMING'|'NONE'
 }
 
 export type StatusEvent={
@@ -115,7 +117,8 @@ export default async function OperatorPage(){
       scheduled_activation_period_id,operational_period_id,
       operational_period_reference,operational_period_source,
       operational_period_status,has_live_notam,notam_number,notam_valid_from,
-      notam_valid_until,notam_feed_state,notam_visibility_mode`)
+      notam_valid_until,notam_feed_state,notam_visibility_mode,
+      has_published_notam,notam_phase`)
     .eq('user_id',userData.user.id)
     .order('code',{ascending:true})
 

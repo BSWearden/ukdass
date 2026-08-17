@@ -26,8 +26,11 @@ type Area = {
   color: string;
   coords: [number, number][];
   hasLiveNotam: boolean;
+  hasPublishedNotam: boolean;
   notamNumber: string | null;
+  notamValidFrom: string | null;
   notamValidUntil: string | null;
+  notamPhase: string;
   notamFeedState: string;
   visibilityReason: string;
 };
@@ -52,8 +55,11 @@ type DbArea = {
   operational_period_reference: string | null;
   operational_period_source: string | null;
   has_live_notam: boolean;
+  has_published_notam: boolean;
   notam_number: string | null;
+  notam_valid_from: string | null;
   notam_valid_until: string | null;
+  notam_phase: string;
   notam_feed_state: string;
   visibility_reason: string;
 };
@@ -107,8 +113,11 @@ function databaseArea(row: DbArea): Area {
     color: statusColor(effective),
     coords: row.geometry,
     hasLiveNotam: row.has_live_notam,
+    hasPublishedNotam: row.has_published_notam,
     notamNumber: row.notam_number,
+    notamValidFrom: row.notam_valid_from,
     notamValidUntil: row.notam_valid_until,
+    notamPhase: row.notam_phase,
     notamFeedState: row.notam_feed_state,
     visibilityReason: row.visibility_reason
   };
@@ -129,7 +138,7 @@ export default function Home() {
     let active = true;
 
     async function loadStatuses() {
-      const { data, error } = await supabase.rpc('get_public_operational_picture_v3');
+      const { data, error } = await supabase.rpc('get_public_operational_picture_v4');
 
       if (!active) return;
       if (error || !data) {
@@ -357,7 +366,8 @@ export default function Home() {
                 <div className="data"><span>Vertical limits</span><strong>{selected.limits}</strong></div>
                 <div className="data"><span>Last declaration</span><strong>{selected.declaredStatus}</strong></div>
                 <div className="data"><span>Validity deadline</span><strong>{selected.statusValidUntil ? formatUtcTime(selected.statusValidUntil) : 'NONE'}</strong></div>
-                <div className="data"><span>NOTAM assurance</span><strong>{selected.hasLiveNotam ? selected.notamNumber ?? 'LIVE MATCH' : 'NO LIVE MATCH'}</strong></div>
+                <div className="data"><span>NOTAM assurance</span><strong>{selected.hasPublishedNotam ? `${selected.notamPhase} · ${selected.notamNumber ?? 'MATCHED'}` : 'NO PUBLISHED MATCH'}</strong></div>
+                <div className="data"><span>NOTAM validity</span><strong>{selected.notamValidFrom&&selected.notamValidUntil?`${formatUtc(selected.notamValidFrom)} – ${formatUtc(selected.notamValidUntil)}`:'—'}</strong></div>
                 <div className="data"><span>NOTAM feed</span><strong>{selected.notamFeedState}</strong></div>
               </div>
 
