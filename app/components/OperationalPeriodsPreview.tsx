@@ -27,6 +27,21 @@ type PeriodEvent={
 }
 
 type Area={id:string;code:string;name:string}
+type Assurance={
+  operational_period_id:string
+  danger_area_id:string
+  code:string
+  name:string
+  starts_at:string
+  ends_at:string
+  reference:string|null
+  source:'MANUAL'|'NOTAM_IMPORT'|'SYSTEM'
+  period_status:'PLANNED'|'CANCELLED'|'COMPLETED'
+  assurance_phase:'UPCOMING'|'PRE_ACTIVATION'|'OPEN'|'ENDING_SOON'|'CANCELLED'|'COMPLETED'
+  effective_status:'ACTIVE'|'INACTIVE'|'UNVERIFIED'
+  requires_attention:boolean
+  assurance_message:string|null
+}
 
 type Props={mode:'admin'|'operator'}
 
@@ -66,6 +81,8 @@ export default function OperationalPeriodsPreview({mode}:Props){
   const [periods,setPeriods]=useState<Period[]>([])
   const [events,setEvents]=useState<PeriodEvent[]>([])
   const [areas,setAreas]=useState<Area[]>([])
+  const [assurance,setAssurance]=useState<Assurance[]>([])
+  const [assuranceError,setAssuranceError]=useState('')
   const [areasLoading,setAreasLoading]=useState(mode==='admin')
   const [areasError,setAreasError]=useState('')
   const [historyError,setHistoryError]=useState('')
@@ -109,10 +126,16 @@ export default function OperationalPeriodsPreview({mode}:Props){
       .select('id,code,name')
       .order('code',{ascending:true})
 
-    const [periodResult,historyResult,areaResult]=await Promise.all([
+    const assurancePromise=supabase
+      .from('operational_period_assurance')
+      .select('operational_period_id,danger_area_id,code,name,starts_at,ends_at,reference,source,period_status,assurance_phase,effective_status,requires_attention,assurance_message')
+      .order('starts_at',{ascending:true})
+
+    const [periodResult,historyResult,areaResult,assuranceResult]=await Promise.all([
       periodPromise,
       historyPromise,
       areaPromise,
+      assurancePromise,
     ])
 
     if(periodResult.error){
@@ -136,10 +159,22 @@ export default function OperationalPeriodsPreview({mode}:Props){
       setAreas((areaResult.data??[]) as Area[])
     }
 
+    if(assuranceResult.error){
+      setAssurance([])
+      setAssuranceError('Operational-day assurance is temporarily unavailable.')
+    }else{
+      setAssurance((assuranceResult.data??[]) as Assurance[])
+      setAssuranceError('')
+    }
+
     setAreasLoading(false)
     setLoading(false)
   }
-  useEffect(()=>{load()},[])
+  useEffect(()=>{
+    load()
+    const timer=window.setInterval(()=>load(),30000)
+    return()=>window.clearInterval(timer)
+  },[])
 
   async function invoke(body:Record<string,unknown>){
     setWorking(true)
@@ -260,6 +295,21 @@ export default function OperationalPeriodsPreview({mode}:Props){
     return areas.find(a=>a.id===period.danger_area_id)??null
   }
 
+  const assuranceVisible=assurance.filter(a=>{
+    if(a.period_status==='CANCELLED')return true
+    return new Date(a.ends_at).getTime()>=Date.now()-86400000
+  })
+
+  const attentionCount=assuranceVisible.filter(a=>a.requires_attention).length
+
+  function assuranceTone(phase:Assurance['assurance_phase'],requiresAttention:boolean){
+    if(requiresAttention)return {fg:'#ff9299',border:'rgba(255,90,100,.45)',bg:'rgba(255,90,100,.08)'}
+    if(phase==='PRE_ACTIVATION'||phase==='ENDING_SOON')return {fg:'#fbbf24',border:'rgba(245,158,11,.40)',bg:'rgba(217,119,6,.07)'}
+    if(phase==='OPEN')return {fg:'#84e8b0',border:'rgba(79,209,139,.36)',bg:'rgba(79,209,139,.06)'}
+    if(phase==='CANCELLED'||phase==='COMPLETED')return {fg:'#91a6b8',border:'rgba(145,166,184,.30)',bg:'rgba(145,166,184,.05)'}
+    return {fg:'#8fdaf0',border:'rgba(89,208,240,.35)',bg:'rgba(89,208,240,.05)'}
+  }
+
   return(
     <>
       <section style={{
@@ -287,6 +337,58 @@ export default function OperationalPeriodsPreview({mode}:Props){
             <span style={{fontSize:'9px',fontWeight:900,color:'#fbbf24',border:'1px solid rgba(245,158,11,.35)',background:'rgba(217,119,6,.06)',padding:'5px 7px',borderRadius:'999px'}}>NOT STATUS AUTHORITY</span>
             {mode==='admin'&&<button onClick={openCreate} style={primaryCompact}>+ Create period</button>}
           </div>
+        </div>
+
+        <div style={{borderTop:'1px solid #203243',padding:'10px 12px',background:'rgba(5,14,21,.35)'}}>
+          <div style={{display:'flex',justifyContent:'space-between',gap:'10px',alignItems:'center',flexWrap:'wrap'}}>
+            <div>
+              <div style={{fontSize:'8px',letterSpacing:'.12em',fontWeight:900,color:'#7f9db0'}}>OPERATIONAL-DAY ASSURANCE</div>
+              <div style={{marginTop:'3px',fontSize:'9px',color:'#91a6b8'}}>
+                Period phase and verification state are evaluated independently. A promulgated period does not itself make a DA ACTIVE.
+              </div>
+            </div>
+            <span style={{
+              fontSize:'8px',
+              fontWeight:900,
+              color:attentionCount?'#ff9299':'#84e8b0',
+              border:`1px solid ${attentionCount?'rgba(255,90,100,.40)':'rgba(79,209,139,.35)'}`,
+              borderRadius:'999px',
+              padding:'4px 7px'
+            }}>
+              {attentionCount?`${attentionCount} REQUIRES ATTENTION`:'NO CURRENT ASSURANCE ALERTS'}
+            </span>
+          </div>
+
+          {assuranceError&&<div style={{marginTop:'8px',fontSize:'9px',color:'#fbbf24'}}>{assuranceError}</div>}
+
+          {!assuranceError&&assuranceVisible.length===0&&(
+            <div style={{marginTop:'8px',fontSize:'9px',color:'#7892a4'}}>No current or recent operational periods to assess.</div>
+          )}
+
+          {!assuranceError&&assuranceVisible.length>0&&(
+            <div style={{display:'grid',gridTemplateColumns:'repeat(auto-fit,minmax(250px,1fr))',gap:'7px',marginTop:'9px'}}>
+              {assuranceVisible.map(item=>{
+                const tone=assuranceTone(item.assurance_phase,item.requires_attention)
+                return(
+                  <div key={item.operational_period_id} style={{border:`1px solid ${tone.border}`,background:tone.bg,borderRadius:'8px',padding:'9px'}}>
+                    <div style={{display:'flex',justifyContent:'space-between',gap:'8px',alignItems:'center'}}>
+                      <strong style={{fontSize:'10px'}}>{item.code}</strong>
+                      <span style={{fontSize:'8px',fontWeight:900,color:tone.fg}}>{item.assurance_phase.replace('_',' ')}</span>
+                    </div>
+                    <div style={{marginTop:'5px',fontSize:'9px',color:'#a7bac6'}}>
+                      Status: <strong style={{color:item.effective_status==='ACTIVE'?'#ff9299':item.effective_status==='INACTIVE'?'#84e8b0':'#fbbf24'}}>{item.effective_status}</strong>
+                    </div>
+                    <div style={{marginTop:'4px',fontSize:'8px',lineHeight:1.45,color:item.requires_attention?'#ffc0c4':'#8199a8'}}>
+                      {item.assurance_message??'No assurance message.'}
+                    </div>
+                    <div style={{marginTop:'5px',fontSize:'8px',color:'#607888'}}>
+                      {utc(item.starts_at)} – {utc(item.ends_at)}{item.reference?` · ${item.reference}`:''}
+                    </div>
+                  </div>
+                )
+              })}
+            </div>
+          )}
         </div>
 
         <div style={{borderTop:'1px solid #203243',padding:'10px 12px'}}>
