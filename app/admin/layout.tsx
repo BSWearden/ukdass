@@ -1,4 +1,5 @@
 import type { Metadata } from 'next'
+import './admin.css'
 
 export const metadata: Metadata = {
   title: 'DASS Administration',
@@ -10,5 +11,9 @@ export default function AdminLayout({
 }: Readonly<{
   children: React.ReactNode
 }>) {
-  return children
+  return (
+    <div className="dass-admin-scroll-shell">
+      {children}
+    </div>
+  )
 }

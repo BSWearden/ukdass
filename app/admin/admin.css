@@ -1,0 +1,15 @@
+.dass-admin-scroll-shell {
+  width: 100%;
+  height: 100dvh;
+  min-height: 100vh;
+  overflow-x: hidden;
+  overflow-y: auto;
+  overscroll-behavior-y: contain;
+  -webkit-overflow-scrolling: touch;
+}
+
+/* The public DASS map intentionally locks body scrolling.
+   Admin pages scroll inside their own route-level shell instead. */
+.dass-admin-scroll-shell > main {
+  min-height: 100%;
+}
