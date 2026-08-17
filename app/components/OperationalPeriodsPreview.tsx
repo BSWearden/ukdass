@@ -67,6 +67,8 @@ export default function OperationalPeriodsPreview({mode}:Props){
   const [periods,setPeriods]=useState<Period[]>([])
   const [events,setEvents]=useState<PeriodEvent[]>([])
   const [areas,setAreas]=useState<Area[]>([])
+  const [areasLoading,setAreasLoading]=useState(mode==='admin')
+  const [areasError,setAreasError]=useState('')
   const [loading,setLoading]=useState(true)
   const [error,setError]=useState('')
   const [modalError,setModalError]=useState('')
@@ -97,22 +99,33 @@ export default function OperationalPeriodsPreview({mode}:Props){
       .order('changed_at',{ascending:false})
       .limit(100)
 
-    const areaQuery=mode==='admin'
-      ? supabase.from('danger_areas').select('id,code,name').order('code',{ascending:true})
-      : Promise.resolve({data:[],error:null})
+    const [periodResult,eventResult]=await Promise.all([periodQuery,eventQuery])
 
-    const [periodResult,eventResult,areaResult]=await Promise.all([periodQuery,eventQuery,areaQuery])
-
-    if(periodResult.error||eventResult.error||('error' in areaResult&&areaResult.error)){
+    if(periodResult.error||eventResult.error){
       setError('Unable to load operational-period data.')
-      setLoading(false)
-      return
+    }else{
+      setPeriods((periodResult.data??[]) as unknown as Period[])
+      setEvents((eventResult.data??[]) as PeriodEvent[])
     }
 
-    setPeriods((periodResult.data??[]) as unknown as Period[])
-    setEvents((eventResult.data??[]) as PeriodEvent[])
-    if(mode==='admin')setAreas(((areaResult as {data:Area[]|null}).data??[]) as Area[])
     setLoading(false)
+
+    if(mode==='admin'){
+      setAreasLoading(true)
+      setAreasError('')
+      const {data:areaData,error:areaError}=await supabase
+        .from('danger_areas')
+        .select('id,code,name')
+        .order('code',{ascending:true})
+
+      if(areaError){
+        setAreas([])
+        setAreasError('Unable to load the Danger Area selection list. Refresh the page and try again.')
+      }else{
+        setAreas((areaData??[]) as Area[])
+      }
+      setAreasLoading(false)
+    }
   }
 
   useEffect(()=>{load()},[])
@@ -321,17 +334,28 @@ export default function OperationalPeriodsPreview({mode}:Props){
       {showCreate&&(
         <Modal title="Create Operational Period" onClose={()=>setShowCreate(false)}>
           <Field label="Danger Area">
-            <select value={areaId} onChange={e=>setAreaId(e.target.value)} style={input}>
-              <option value="">Select Danger Area…</option>
+            <select
+              value={areaId}
+              onChange={e=>setAreaId(e.target.value)}
+              style={input}
+              disabled={areasLoading||areas.length===0}
+            >
+              <option value="">
+                {areasLoading?'Loading Danger Areas…':areas.length===0?'No Danger Areas available':'Select Danger Area…'}
+              </option>
               {areas.map(a=><option key={a.id} value={a.id}>{a.code} — {a.name}</option>)}
             </select>
           </Field>
+          {areasError&&<ModalError message={areasError}/>}
+          {!areasLoading&&!areasError&&areas.length===0&&(
+            <ModalError message="DASS could not find any Danger Areas to assign to this operational period."/>
+          )}
           <UtcFields startsAt={startsAt} endsAt={endsAt} setStartsAt={setStartsAt} setEndsAt={setEndsAt}/>
           <Field label="Reference / NOTAM identifier (optional)"><input value={reference} onChange={e=>setReference(e.target.value.slice(0,120))} style={input}/></Field>
           <Field label="Administrative notes (optional)"><textarea value={notes} onChange={e=>setNotes(e.target.value.slice(0,1000))} rows={3} style={{...input,resize:'vertical'}}/></Field>
           <div style={notice}><strong>Important:</strong> creating this record establishes a promulgated operational period in DASS only. It does not declare the Danger Area ACTIVE.</div>
           {modalError&&<ModalError message={modalError}/>}
-          <button disabled={working} onClick={createPeriod} style={primaryButton}>{working?'Creating…':'Create operational period'}</button>
+          <button disabled={working||areasLoading||areas.length===0} onClick={createPeriod} style={primaryButton}>{working?'Creating…':'Create operational period'}</button>
         </Modal>
       )}
 
