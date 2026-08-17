@@ -15,7 +15,6 @@ type Period={
   created_at:string
   updated_at:string
   cancelled_at:string|null
-  danger_areas:{code:string;name:string}|null
 }
 
 type PeriodEvent={
@@ -69,6 +68,7 @@ export default function OperationalPeriodsPreview({mode}:Props){
   const [areas,setAreas]=useState<Area[]>([])
   const [areasLoading,setAreasLoading]=useState(mode==='admin')
   const [areasError,setAreasError]=useState('')
+  const [historyError,setHistoryError]=useState('')
   const [loading,setLoading]=useState(true)
   const [error,setError]=useState('')
   const [modalError,setModalError]=useState('')
@@ -86,48 +86,59 @@ export default function OperationalPeriodsPreview({mode}:Props){
   async function load(){
     setLoading(true)
     setError('')
+    setHistoryError('')
+    if(mode==='admin'){
+      setAreasLoading(true)
+      setAreasError('')
+    }
 
-    const periodQuery=supabase
+    const periodPromise=supabase
       .from('operational_periods')
-      .select('id,danger_area_id,starts_at,ends_at,reference,source,period_status,notes,created_at,updated_at,cancelled_at,danger_areas(code,name)')
+      .select('id,danger_area_id,starts_at,ends_at,reference,source,period_status,notes,created_at,updated_at,cancelled_at')
       .order('starts_at',{ascending:true})
       .limit(50)
 
-    const eventQuery=supabase
+    const historyPromise=supabase
       .from('operational_period_events')
       .select('id,operational_period_id,danger_area_id,event_type,changed_at,summary')
       .order('changed_at',{ascending:false})
       .limit(100)
 
-    const [periodResult,eventResult]=await Promise.all([periodQuery,eventQuery])
+    const areaPromise=supabase
+      .from('danger_areas')
+      .select('id,code,name')
+      .order('code',{ascending:true})
 
-    if(periodResult.error||eventResult.error){
-      setError('Unable to load operational-period data.')
+    const [periodResult,historyResult,areaResult]=await Promise.all([
+      periodPromise,
+      historyPromise,
+      areaPromise,
+    ])
+
+    if(periodResult.error){
+      setPeriods([])
+      setError(`Unable to load operational periods: ${periodResult.error.message}`)
     }else{
-      setPeriods((periodResult.data??[]) as unknown as Period[])
-      setEvents((eventResult.data??[]) as PeriodEvent[])
+      setPeriods((periodResult.data??[]) as Period[])
     }
 
+    if(historyResult.error){
+      setEvents([])
+      setHistoryError('Period history is temporarily unavailable. Period creation and management remain available.')
+    }else{
+      setEvents((historyResult.data??[]) as PeriodEvent[])
+    }
+
+    if(areaResult.error){
+      setAreas([])
+      setAreasError(`Unable to load the Danger Area selection list: ${areaResult.error.message}`)
+    }else{
+      setAreas((areaResult.data??[]) as Area[])
+    }
+
+    setAreasLoading(false)
     setLoading(false)
-
-    if(mode==='admin'){
-      setAreasLoading(true)
-      setAreasError('')
-      const {data:areaData,error:areaError}=await supabase
-        .from('danger_areas')
-        .select('id,code,name')
-        .order('code',{ascending:true})
-
-      if(areaError){
-        setAreas([])
-        setAreasError('Unable to load the Danger Area selection list. Refresh the page and try again.')
-      }else{
-        setAreas((areaData??[]) as Area[])
-      }
-      setAreasLoading(false)
-    }
   }
-
   useEffect(()=>{load()},[])
 
   async function invoke(body:Record<string,unknown>){
@@ -245,6 +256,10 @@ export default function OperationalPeriodsPreview({mode}:Props){
     return new Date(p.ends_at).getTime()>=Date.now()-86400000
   })
 
+  function areaFor(period:Period){
+    return areas.find(a=>a.id===period.danger_area_id)??null
+  }
+
   return(
     <>
       <section style={{
@@ -277,6 +292,7 @@ export default function OperationalPeriodsPreview({mode}:Props){
         <div style={{borderTop:'1px solid #203243',padding:'10px 12px'}}>
           {loading&&<div style={{padding:'8px',fontSize:'10px',color:'#91a6b8'}}>Loading operational periods…</div>}
           {error&&<div style={errorBox}>{error}</div>}
+          {historyError&&<div style={{...errorBox,borderLeftColor:'#fbbf24',color:'#efd49a',background:'rgba(217,119,6,.07)'}}>{historyError}</div>}
 
           {!loading&&!error&&visible.length===0&&(
             <div style={{padding:'10px',fontSize:'10px',lineHeight:1.5,color:'#91a6b8'}}>
@@ -293,8 +309,8 @@ export default function OperationalPeriodsPreview({mode}:Props){
                   <article key={period.id} style={{border:'1px solid #203746',background:'#091720',borderRadius:'9px',padding:'10px'}}>
                     <div style={{display:'flex',justifyContent:'space-between',gap:'9px',alignItems:'flex-start'}}>
                       <div>
-                        <strong style={{fontSize:'11px',color:'#edf5fb'}}>{period.danger_areas?.code??'Danger Area'}</strong>
-                        <div style={{marginTop:'2px',fontSize:'9px',color:'#7892a4'}}>{period.danger_areas?.name??''}</div>
+                        <strong style={{fontSize:'11px',color:'#edf5fb'}}>{areaFor(period)?.code??'Danger Area'}</strong>
+                        <div style={{marginTop:'2px',fontSize:'9px',color:'#7892a4'}}>{areaFor(period)?.name??''}</div>
                       </div>
                       <span style={{fontSize:'8px',fontWeight:900,color:s.color,border:`1px solid ${s.border}`,background:s.bg,borderRadius:'999px',padding:'4px 6px'}}>{period.period_status}</span>
                     </div>
@@ -360,7 +376,7 @@ export default function OperationalPeriodsPreview({mode}:Props){
       )}
 
       {editing&&(
-        <Modal title={`Amend Operational Period — ${editing.danger_areas?.code??'DA'}`} onClose={()=>setEditing(null)}>
+        <Modal title={`Amend Operational Period — ${areaFor(editing)?.code??'DA'}`} onClose={()=>setEditing(null)}>
           <UtcFields startsAt={startsAt} endsAt={endsAt} setStartsAt={setStartsAt} setEndsAt={setEndsAt}/>
           <Field label="Reference / NOTAM identifier (optional)"><input value={reference} onChange={e=>setReference(e.target.value.slice(0,120))} style={input}/></Field>
           <Field label="Administrative notes (optional)"><textarea value={notes} onChange={e=>setNotes(e.target.value.slice(0,1000))} rows={3} style={{...input,resize:'vertical'}}/></Field>
@@ -371,7 +387,7 @@ export default function OperationalPeriodsPreview({mode}:Props){
       )}
 
       {cancelling&&(
-        <Modal title={`Cancel Operational Period — ${cancelling.danger_areas?.code??'DA'}`} onClose={()=>setCancelling(null)}>
+        <Modal title={`Cancel Operational Period — ${areaFor(cancelling)?.code??'DA'}`} onClose={()=>setCancelling(null)}>
           <div style={{fontSize:'10px',lineHeight:1.5,color:'#ffb5ba'}}>Cancellation marks this promulgation record CANCELLED. It does not issue a STAND DOWN command and does not alter any current Danger Area declaration.</div>
           <Field label="Cancellation reason">
             <textarea value={cancelReason} onChange={e=>setCancelReason(e.target.value.slice(0,500))} rows={4} style={{...input,resize:'vertical'}}/>
