@@ -5,12 +5,13 @@ import { useRouter } from 'next/navigation'
 import { createClient } from '../../../lib/supabase/client'
 import StatusControls from './StatusControls'
 import { acknowledgeOperationalNotification, logout, markOperationalNotificationSeen } from '../actions'
-import type { AssignedArea, OperationalNotification, StatusEvent } from '../page'
+import type { AssignedArea, ForwardNotam, OperationalNotification, StatusEvent } from '../page'
 
 type Props={
   operatorName:string
   organisation:string
   assigned:AssignedArea[]
+  forwardNotams:ForwardNotam[]
   events:StatusEvent[]
   notifications:OperationalNotification[]
 }
@@ -55,7 +56,7 @@ function notificationBody(n:OperationalNotification){
     : `The reporting period is open and DASS has generated an UNVERIFIED escalation. Verify the current Danger Area state.`
 }
 
-export default function OperationalDashboard({operatorName,organisation,assigned,events,notifications}:Props){
+export default function OperationalDashboard({operatorName,organisation,assigned,forwardNotams,events,notifications}:Props){
   const router=useRouter()
   const supabase=useMemo(()=>createClient(),[])
   const [clock,setClock]=useState(new Date())
@@ -397,6 +398,17 @@ export default function OperationalDashboard({operatorName,organisation,assigned
                 }
               </article>
             })}
+          </div>
+        </section>
+
+        <section style={{marginTop:'22px',border:'1px solid #203243',background:'#0b1722',borderRadius:'14px',overflow:'hidden'}}>
+          <div style={{padding:'15px 17px',borderBottom:'1px solid #203243'}}>
+            <div style={{fontSize:'9px',color:'#7f9db0',textTransform:'uppercase',letterSpacing:'.13em',fontWeight:850}}>Next four days</div>
+            <h2 style={{margin:'4px 0 0',fontSize:'17px'}}>Forward NOTAM Plan</h2>
+            <p style={{margin:'6px 0 0',fontSize:'10px',lineHeight:1.5,color:'#91a6b8'}}>Preloaded activations remain planning information until their NOTAM validity begins. They do not activate a Danger Area automatically.</p>
+          </div>
+          <div style={{padding:'12px',display:'grid',gap:'8px'}}>
+            {forwardNotams.length===0?<div style={{padding:'8px',color:'#91a6b8',fontSize:'12px'}}>No current or upcoming NOTAM activations are loaded for your assigned areas.</div>:forwardNotams.map(notam=><div key={notam.notam_id} style={{display:'grid',gridTemplateColumns:'minmax(80px,.55fr) minmax(130px,1fr) minmax(190px,1.5fr) auto',gap:'10px',alignItems:'center',border:'1px solid #203746',background:'#091720',borderRadius:'9px',padding:'10px'}}><strong style={{fontSize:'11px',color:'#8fdaf0'}}>{notam.code}</strong><span style={{fontSize:'10px'}}>{notam.notam_number}</span><span style={{fontSize:'10px',color:'#9fb1bc'}}>{formatUtc(notam.valid_from)} – {formatUtc(notam.valid_until)}</span><span style={{fontSize:'9px',fontWeight:900,color:notam.notam_phase==='CURRENT'?'#84e8b0':'#fbbf24'}}>{notam.notam_phase}</span></div>)}
           </div>
         </section>
 

@@ -75,6 +75,17 @@ export type OperationalNotification={
   danger_areas:{code:string;name:string}|null
 }
 
+export type ForwardNotam={
+  notam_id:string
+  danger_area_id:string
+  code:string
+  name:string
+  notam_number:string
+  valid_from:string
+  valid_until:string|null
+  notam_phase:'CURRENT'|'UPCOMING'
+}
+
 export const dynamic='force-dynamic'
 
 export default async function OperatorPage(){
@@ -125,6 +136,15 @@ export default async function OperatorPage(){
   if(assignedError)throw new Error('Unable to load assigned Danger Areas.')
   const assigned=(assignedData??[]) as AssignedArea[]
 
+  const {data:forwardData,error:forwardError}=await supabase
+    .from('operator_notam_forward_plan')
+    .select('notam_id,danger_area_id,code,name,notam_number,valid_from,valid_until,notam_phase')
+    .eq('user_id',userData.user.id)
+    .order('valid_from',{ascending:true})
+
+  if(forwardError)throw new Error('Unable to load the forward NOTAM plan.')
+  const forwardNotams=(forwardData??[]) as ForwardNotam[]
+
   const {data:eventData,error:eventError}=await supabase
     .from('status_events')
     .select(`id,previous_status,new_status,changed_at,note,valid_until,
@@ -157,6 +177,7 @@ export default async function OperatorPage(){
         operatorName={profile.display_name}
         organisation={organisation}
         assigned={assigned}
+        forwardNotams={forwardNotams}
         events={events}
         notifications={notifications}
       />
