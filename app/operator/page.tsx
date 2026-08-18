@@ -4,6 +4,8 @@ import { logout } from './actions'
 import OperationalDashboard from './components/OperationalDashboard'
 import OperatorPeriodBasis from './components/OperatorPeriodBasis'
 import OperationalPeriodsPreview from '../components/OperationalPeriodsPreview'
+import OperationalAlertCentre from '../components/OperationalAlertCentre'
+import {buildOperatorAlerts} from '../../lib/alerts/operational-alerts'
 
 type Status='ACTIVE'|'INACTIVE'|'UNVERIFIED'
 
@@ -168,11 +170,13 @@ export default async function OperatorPage(){
   const notifications=(notificationData??[]) as unknown as OperationalNotification[]
 
   const organisation=(profile.organisations as {name?:string}|null)?.name??'No organisation'
+  const alerts=buildOperatorAlerts(assigned)
 
   return(
     <>
       <OperationalPeriodsPreview mode="operator"/>
       <OperatorPeriodBasis assigned={assigned}/>
+      <OperationalAlertCentre alerts={alerts} audience="Operator"/>
       <OperationalDashboard
         operatorName={profile.display_name}
         organisation={organisation}

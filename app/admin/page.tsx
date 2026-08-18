@@ -4,6 +4,8 @@ import { adminLogout } from './actions'
 import AdminOperatorControls from './components/AdminOperatorControls'
 import ExceptionEnginePreview from './components/ExceptionEnginePreview'
 import OperationalPeriodsPreview from '../components/OperationalPeriodsPreview'
+import OperationalAlertCentre from '../components/OperationalAlertCentre'
+import {buildAdminAlerts} from '../../lib/alerts/operational-alerts'
 
 type OperatorProfile={user_id:string;display_name:string;organisation_id:string|null;account_status:string;must_change_password:boolean;created_at:string;updated_at:string;suspension_reason:string|null;suspended_at:string|null;reactivated_at:string|null;credentials_issued_at:string|null;password_reset_at:string|null}
 type Organisation={id:string;name:string}
@@ -25,7 +27,7 @@ export default async function AdminPage(){
   if(adminError)throw new Error('Unable to verify DASS administrator permissions.')
   if(!adminProfile||adminProfile.account_status!=='ACTIVE')return <main style={{minHeight:'100vh',background:'#071019',color:'#edf5fb',padding:'32px'}}><div style={{maxWidth:'760px',margin:'0 auto'}}><h1>Administrative access unavailable</h1><p style={{color:'#91a6b8'}}>This account does not hold an active DASS administrator profile.</p><form action={adminLogout}><button type="submit">Sign out</button></form></div></main>
 
-  const [operatorResult,organisationResult,permissionResult,areaResult,eventResult,notificationResult,auditResult]=await Promise.all([
+  const [operatorResult,organisationResult,permissionResult,areaResult,eventResult,notificationResult,auditResult,runResult,reviewResult,notamResult]=await Promise.all([
     supabase.from('operator_profiles').select('user_id,display_name,organisation_id,account_status,must_change_password,created_at,updated_at,suspension_reason,suspended_at,reactivated_at,credentials_issued_at,password_reset_at').order('display_name',{ascending:true}),
     supabase.from('organisations').select('id,name').order('name',{ascending:true}),
     supabase.from('operator_permissions').select('user_id,danger_area_id,can_change_status,created_at'),
@@ -33,8 +35,11 @@ export default async function AdminPage(){
     supabase.from('status_events').select('id,danger_area_id,previous_status,new_status,changed_by,changed_at,note,event_source,event_type').order('changed_at',{ascending:false}).limit(100),
     supabase.from('operational_notifications').select('id,danger_area_id,user_id,notification_type,status,attempts,sent_at,seen_at,acknowledged_at,created_at').order('created_at',{ascending:false}).limit(30),
     supabase.from('admin_audit_log').select('id,admin_user_id,action_type,target_user_id,danger_area_id,summary,metadata,created_at').order('created_at',{ascending:false}).limit(100),
+    supabase.from('notam_sync_runs').select('id,report_reference,coverage_end,sync_status').in('sync_status',['SUCCESS','PARTIAL']).order('published_at',{ascending:false}).limit(1).maybeSingle(),
+    supabase.from('notam_import_items').select('id,import_run_id,schedule_status,designator').eq('schedule_status','REVIEW_REQUIRED').limit(1000),
+    supabase.from('danger_area_notams').select('id,notam_number,valid_until,danger_areas(code)').eq('lifecycle_status','ACTIVE').gt('valid_until',new Date().toISOString()).lte('valid_until',new Date(Date.now()+60*60*1000).toISOString()).order('valid_until',{ascending:true}),
   ])
-  if([operatorResult.error,organisationResult.error,permissionResult.error,areaResult.error,eventResult.error,notificationResult.error,auditResult.error].some(Boolean))throw new Error('Unable to load one or more DASS administration datasets.')
+  if([operatorResult.error,organisationResult.error,permissionResult.error,areaResult.error,eventResult.error,notificationResult.error,auditResult.error,runResult.error,reviewResult.error,notamResult.error].some(Boolean))throw new Error('Unable to load one or more DASS administration datasets.')
 
   const operators=(operatorResult.data??[]) as OperatorProfile[]
   const organisations=(organisationResult.data??[]) as Organisation[]
@@ -53,16 +58,19 @@ export default async function AdminPage(){
   const unverifiedAreas=areas.filter(a=>a.current_status==='UNVERIFIED').length
   const failedNotifications=notifications.filter(n=>n.status==='FAILED').length
   const unack=notifications.filter(n=>n.status==='SENT'&&!n.acknowledged_at).length
+  const alerts=buildAdminAlerts(runResult.data,(reviewResult.data??[]) as never[],(notamResult.data??[]) as never[])
 
   return <main style={{minHeight:'100vh',background:'#071019',color:'#edf5fb',padding:'clamp(14px,3vw,26px)'}}><div style={{maxWidth:'1280px',margin:'0 auto'}}>
     <header style={{display:'flex',justifyContent:'space-between',alignItems:'center',gap:'16px',flexWrap:'wrap',paddingBottom:'18px',borderBottom:'1px solid #203243'}}>
-      <div><div style={{fontSize:'10px',letterSpacing:'.16em',textTransform:'uppercase',color:'#7f9db0',fontWeight:850}}>DASS Alpha 1.1.0 · Governance & Authority Assurance</div><h1 style={{margin:'5px 0 4px',fontSize:'clamp(25px,5vw,32px)'}}>Administrator Dashboard</h1><div style={{fontSize:'13px',color:'#91a6b8'}}>{adminProfile.display_name} · {adminProfile.admin_role}</div></div>
+      <div><div style={{fontSize:'10px',letterSpacing:'.16em',textTransform:'uppercase',color:'#7f9db0',fontWeight:850}}>DASS Alpha 1.4.0 · Alerts & Operational Assurance</div><h1 style={{margin:'5px 0 4px',fontSize:'clamp(25px,5vw,32px)'}}>Administrator Dashboard</h1><div style={{fontSize:'13px',color:'#91a6b8'}}>{adminProfile.display_name} · {adminProfile.admin_role}</div></div>
       <div style={{display:'flex',gap:'9px',flexWrap:'wrap'}}><a href="/admin/notam" style={nav}>NOTAM assurance</a><a href="/admin/authority" style={nav}>Authority mapping</a><a href="/admin/aip-import" style={nav}>AIP imports</a><a href="/operator" style={nav}>Operator interface</a><a href="/" style={nav}>Live map</a><form action={adminLogout}><button type="submit" style={{...nav,height:'100%'}}>Sign out</button></form></div>
     </header>
 
     <section style={{marginTop:'18px',display:'grid',gridTemplateColumns:'repeat(auto-fit,minmax(150px,1fr))',gap:'10px'}}>
       <Summary label="Operators" value={String(operators.length)} accent="#d7e5ed"/><Summary label="Active operators" value={String(activeOperators)} accent="#84e8b0"/><Summary label="Danger Areas" value={String(areas.length)} accent="#d7e5ed"/><Summary label="Currently active" value={String(activeAreas)} accent={activeAreas?'#ff9299':'#84e8b0'}/><Summary label="Unverified" value={String(unverifiedAreas)} accent={unverifiedAreas?'#fbbf24':'#84e8b0'}/><Summary label="Unack. alerts" value={String(unack)} accent={unack?'#fbbf24':'#84e8b0'}/><Summary label="Failed email" value={String(failedNotifications)} accent={failedNotifications?'#ff9299':'#84e8b0'}/>
     </section>
+
+    <OperationalAlertCentre alerts={alerts} audience="Administrator"/>
 
     <OperationalPeriodsPreview mode="admin"/>
 
