@@ -143,6 +143,7 @@ function databaseArea(row: DbArea): Area {
 }
 
 export default function Home() {
+  const mapContainerRef = useRef<HTMLDivElement | null>(null);
   const mapRef = useRef<LeafletMap | null>(null);
   const layersRef = useRef<Map<string, LeafletPolygon>>(new Map());
   const areasRef = useRef<Area[]>([]);
@@ -218,9 +219,10 @@ export default function Home() {
     (async () => {
       const L = await import('leaflet');
       await import('leaflet/dist/leaflet.css');
-      if (cancelled || mapRef.current) return;
+      const container = mapContainerRef.current;
+      if (cancelled || mapRef.current || !container) return;
 
-      const map = L.map('map', {zoomControl:false,attributionControl:true}).setView([54.05,-2.7],6);
+      const map = L.map(container, {zoomControl:false,attributionControl:true}).setView([54.05,-2.7],6);
       mapRef.current = map;
       L.control.zoom({position:'bottomleft'}).addTo(map);
       L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
@@ -232,6 +234,26 @@ export default function Home() {
         const codes=hits.map(area=>area.code);
         setOverlapCodes(codes);
         setSelectedCode(codes[0]??null);
+      });
+
+      let resizeFrame = 0;
+      const resizeMap = () => {
+        window.cancelAnimationFrame(resizeFrame);
+        resizeFrame = window.requestAnimationFrame(() => map.invalidateSize({animate:false,pan:false}));
+      };
+      const resizeObserver = new ResizeObserver(resizeMap);
+      resizeObserver.observe(container);
+      window.addEventListener('resize',resizeMap);
+      window.addEventListener('orientationchange',resizeMap);
+      window.visualViewport?.addEventListener('resize',resizeMap);
+      resizeMap();
+
+      map.once('unload',() => {
+        window.cancelAnimationFrame(resizeFrame);
+        resizeObserver.disconnect();
+        window.removeEventListener('resize',resizeMap);
+        window.removeEventListener('orientationchange',resizeMap);
+        window.visualViewport?.removeEventListener('resize',resizeMap);
       });
 
     })();
@@ -316,7 +338,7 @@ export default function Home() {
 
       <main className={`workspace ${selected ? 'has-selection' : ''}`}>
         <section className="mapwrap">
-          <div id="map" className="map" />
+          <div ref={mapContainerRef} id="map" className="map" />
           <div className="map-overlay">
             <div className="status-card">
               <div className="eyebrow">Demonstration network</div>
