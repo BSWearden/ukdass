@@ -76,6 +76,25 @@ function statusColor(status: Status) {
   return '#ffba4a';
 }
 
+function pointOnSegment(point:[number,number],a:[number,number],b:[number,number]){
+  const [py,px]=point,[ay,ax]=a,[by,bx]=b;
+  const cross=(px-ax)*(by-ay)-(py-ay)*(bx-ax);
+  if(Math.abs(cross)>1e-8)return false;
+  return px>=Math.min(ax,bx)-1e-8&&px<=Math.max(ax,bx)+1e-8&&py>=Math.min(ay,by)-1e-8&&py<=Math.max(ay,by)+1e-8;
+}
+
+function containsPoint(point:[number,number],polygon:[number,number][]){
+  if(polygon.length<3)return false;
+  const [py,px]=point;let inside=false;
+  for(let i=0,j=polygon.length-1;i<polygon.length;j=i++){
+    const a=polygon[j],b=polygon[i];
+    if(pointOnSegment(point,a,b))return true;
+    const [ay,ax]=a,[by,bx]=b;
+    if((ay>py)!==(by>py)&&px<(bx-ax)*(py-ay)/(by-ay)+ax)inside=!inside;
+  }
+  return inside;
+}
+
 function formatUtc(value: string | null) {
   if (!value) return '—';
   return new Intl.DateTimeFormat('en-GB', {
@@ -126,12 +145,19 @@ function databaseArea(row: DbArea): Area {
 export default function Home() {
   const mapRef = useRef<LeafletMap | null>(null);
   const layersRef = useRef<Map<string, LeafletPolygon>>(new Map());
+  const areasRef = useRef<Area[]>([]);
   const [areas, setAreas] = useState<Area[]>([]);
   const [selectedCode, setSelectedCode] = useState<string | null>(null);
+  const [overlapCodes,setOverlapCodes]=useState<string[]>([]);
   const [connectionState, setConnectionState] = useState<'CONNECTING'|'LIVE'|'DEGRADED'>('CONNECTING');
 
   const selected = useMemo(() => areas.find(a => a.code === selectedCode) ?? null, [areas, selectedCode]);
+  const overlapAreas=useMemo(()=>overlapCodes.map(code=>areas.find(area=>area.code===code)).filter((area):area is Area=>Boolean(area)),[areas,overlapCodes]);
   const statusClass = useMemo(() => selected ? selected.status.toLowerCase() : '', [selected]);
+
+  useEffect(() => {
+    areasRef.current=areas;
+  },[areas]);
 
   useEffect(() => {
     const supabase = createClient();
@@ -201,9 +227,11 @@ export default function Home() {
         maxZoom:12, attribution:'&copy; OpenStreetMap contributors'
       }).addTo(map);
 
-      map.on('click', () => {
-        setSelectedCode(null);
-        layersRef.current.forEach(layer => layer.setStyle({weight:2}));
+      map.on('click', event => {
+        const hits=areasRef.current.filter(area=>containsPoint([event.latlng.lat,event.latlng.lng],area.coords)).sort((a,b)=>a.code.localeCompare(b.code));
+        const codes=hits.map(area=>area.code);
+        setOverlapCodes(codes);
+        setSelectedCode(codes[0]??null);
       });
 
     })();
@@ -236,23 +264,18 @@ export default function Home() {
         if (!layer) {
           layer = L.polygon(area.coords).addTo(map);
           layer.bindTooltip(area.code, {sticky:true,className:'dass-label',direction:'top'});
-          layer.on('click', event => {
-            L.DomEvent.stopPropagation(event);
-            layersRef.current.forEach(item => item.setStyle({weight:2}));
-            layer?.setStyle({weight:4});
-            layer?.bringToFront();
-            setSelectedCode(area.code);
-          });
           layersRef.current.set(area.code, layer);
         } else {
           layer.setLatLngs(area.coords);
         }
+        const overlap=overlapCodes.includes(area.code),isSelected=selectedCode===area.code;
         layer.setStyle({
-          color:statusColor(area.status), weight:selectedCode === area.code ? 4 : 2,
+          color:statusColor(area.status), weight:isSelected?5:overlap?3:2,
           fillColor:statusColor(area.status),
-          fillOpacity:area.status === 'ACTIVE' ? .28 : .19,
+          fillOpacity:isSelected ? .38 : overlap ? .10 : area.status === 'ACTIVE' ? .28 : .19,
           dashArray:area.status === 'UNVERIFIED' ? '7 6' : undefined
         });
+        if(isSelected)layer.bringToFront();
       });
 
       if (areas.length > 0 && map.getZoom() === 6) {
@@ -262,10 +285,11 @@ export default function Home() {
     })();
 
     return () => { cancelled = true; };
-  }, [areas, selectedCode]);
+  }, [areas, selectedCode,overlapCodes]);
 
   const closePanel = () => {
     setSelectedCode(null);
+    setOverlapCodes([]);
     layersRef.current.forEach(layer => layer.setStyle({weight:2}));
   };
 
@@ -331,6 +355,7 @@ export default function Home() {
             </div>
           ) : (
             <div className="details show">
+              {overlapAreas.length>1&&<section aria-label="Overlapping airspace sectors" style={{marginBottom:'14px',border:'1px solid #385267',background:'#091720',borderRadius:'10px',padding:'11px'}}><div className="eyebrow">{overlapAreas.length} overlapping sectors at selected point</div><p style={{margin:'6px 0 9px',fontSize:'10px',lineHeight:1.45,color:'#91a6b8'}}>Select a sector to inspect and highlight it individually. All intersecting sectors remain listed.</p><div style={{display:'grid',gap:'6px'}}>{overlapAreas.map(area=><button key={area.code} type="button" aria-pressed={area.code===selectedCode} onClick={()=>setSelectedCode(area.code)} style={{display:'grid',gridTemplateColumns:'minmax(72px,.65fr) minmax(115px,1.35fr) auto',gap:'8px',alignItems:'center',textAlign:'left',border:area.code===selectedCode?'1px solid #8fdaf0':'1px solid #203746',background:area.code===selectedCode?'rgba(89,208,240,.12)':'#0b1722',color:'#edf5fb',borderRadius:'8px',padding:'9px'}}><strong style={{color:'#8fdaf0',fontSize:'11px'}}>{area.code}</strong><span style={{fontSize:'9px',color:'#b6c5cf'}}>{area.limits}</span><span style={{fontSize:'8px',fontWeight:900,color:statusColor(area.status)}}>{area.status}</span></button>)}</div></section>}
               <div className="area-code">{selected.code}</div>
               <div className="area-name">{selected.name}</div>
 
