@@ -24,7 +24,17 @@ export default async function AdminPage(){
   const {data:userData,error:userError}=await supabase.auth.getUser()
   if(userError||!userData.user)redirect('/admin/login')
   const {data:adminProfile,error:adminError}=await supabase.from('admin_profiles').select('user_id,display_name,admin_role,account_status').eq('user_id',userData.user.id).maybeSingle()
-  if(adminError)throw new Error('Unable to verify DASS administrator permissions.')
+  if(adminError){
+    console.error('[DASS admin profile lookup failed]',{
+      code:adminError.code,
+      message:adminError.message,
+      details:adminError.details,
+      hint:adminError.hint,
+      status:'status' in adminError?adminError.status:undefined,
+      userId:userData.user.id,
+    })
+    throw new Error('Unable to verify DASS administrator permissions.')
+  }
   if(!adminProfile||adminProfile.account_status!=='ACTIVE')return <main style={{minHeight:'100vh',background:'#071019',color:'#edf5fb',padding:'32px'}}><div style={{maxWidth:'760px',margin:'0 auto'}}><h1>Administrative access unavailable</h1><p style={{color:'#91a6b8'}}>This account does not hold an active DASS administrator profile.</p><form action={adminLogout}><button type="submit">Sign out</button></form></div></main>
 
   const [operatorResult,organisationResult,permissionResult,areaResult,eventResult,notificationResult,auditResult,runResult,reviewResult,notamResult]=await Promise.all([
