@@ -4,7 +4,9 @@ import { useEffect, useMemo, useRef, useState } from 'react';
 import type { Map as LeafletMap, Polygon as LeafletPolygon } from 'leaflet';
 import { createClient } from '../lib/supabase/client';
 
-type Status = 'ACTIVE' | 'INACTIVE' | 'UNVERIFIED';
+type Status = 'ACTIVE' | 'INACTIVE' | 'UNVERIFIED' | 'PLANNED';
+
+type PlanningWindow={server_now:string;coverage_end:string|null;planning_available:boolean};
 
 type Area = {
   id?: string;
@@ -73,7 +75,19 @@ function effectiveStatus(declared: Status, validUntil: string | null): Status {
 function statusColor(status: Status) {
   if (status === 'ACTIVE') return '#ff5a64';
   if (status === 'INACTIVE') return '#4fd18b';
+  if (status === 'PLANNED') return '#59d0f0';
   return '#ffba4a';
+}
+
+function localInputValue(value:Date){
+  const offset=value.getTimezoneOffset()*60000;
+  return new Date(value.getTime()-offset).toISOString().slice(0,16);
+}
+
+function nextLocalTime(hour:number,minute:number){
+  const value=new Date();value.setHours(hour,minute,0,0);
+  if(value.getTime()<=Date.now())value.setDate(value.getDate()+1);
+  return value;
 }
 
 function pointOnSegment(point:[number,number],a:[number,number],b:[number,number]){
@@ -110,8 +124,8 @@ function formatUtcTime(value: string | null) {
   }).format(new Date(value)) + 'Z';
 }
 
-function databaseArea(row: DbArea): Area {
-  const effective = row.effective_status;
+function databaseArea(row: DbArea,planning:boolean): Area {
+  const effective = planning?'PLANNED':row.effective_status;
   return {
     id: row.id,
     code: row.code,
@@ -151,6 +165,10 @@ export default function Home() {
   const [selectedCode, setSelectedCode] = useState<string | null>(null);
   const [overlapCodes,setOverlapCodes]=useState<string[]>([]);
   const [connectionState, setConnectionState] = useState<'CONNECTING'|'LIVE'|'DEGRADED'>('CONNECTING');
+  const [viewAt,setViewAt]=useState<string|null>(null);
+  const [planningWindow,setPlanningWindow]=useState<PlanningWindow|null>(null);
+  const [planningError,setPlanningError]=useState<string|null>(null);
+  const planning=Boolean(viewAt);
 
   const selected = useMemo(() => areas.find(a => a.code === selectedCode) ?? null, [areas, selectedCode]);
   const overlapAreas=useMemo(()=>overlapCodes.map(code=>areas.find(area=>area.code===code)).filter((area):area is Area=>Boolean(area)),[areas,overlapCodes]);
@@ -164,21 +182,35 @@ export default function Home() {
     const supabase = createClient();
     let active = true;
 
+    async function loadPlanningWindow(){
+      const {data}=await supabase.rpc('get_public_planning_window');
+      if(active&&data?.[0])setPlanningWindow(data[0] as PlanningWindow);
+    }
+
     async function loadStatuses() {
-      const { data, error } = await supabase.rpc('get_public_operational_picture_v4');
+      setConnectionState('CONNECTING');
+      setPlanningError(null);
+      const request=viewAt
+        ?supabase.rpc('get_public_operational_picture_at',{p_at:viewAt})
+        :supabase.rpc('get_public_operational_picture_v4');
+      const { data, error } = await request;
 
       if (!active) return;
       if (error || !data) {
         console.error('Unable to load DASS status data', error);
+        if(viewAt)setPlanningError(error?.message?.includes('PLANNING_TIME_NOT_COVERED')?'The selected time is outside the assured coverage of the published PIBs. Choose another time or return to Live now.':'DASS could not build the selected planning picture.');
         setConnectionState('DEGRADED');
         return;
       }
 
       const rows = data as DbArea[];
-      setAreas(rows.map(databaseArea));
+      setAreas(rows.map(row=>databaseArea(row,Boolean(viewAt))));
+      setSelectedCode(current=>rows.some(row=>row.code===current)?current:null);
+      setOverlapCodes(current=>current.filter(code=>rows.some(row=>row.code===code)));
       setConnectionState('LIVE');
     }
 
+    void loadPlanningWindow();
     loadStatuses();
 
     const channel = supabase
@@ -200,10 +232,11 @@ export default function Home() {
       window.clearInterval(refreshTimer);
       supabase.removeChannel(channel);
     };
-  }, []);
+  }, [viewAt]);
 
   useEffect(() => {
     const timer = window.setInterval(() => {
+      if(viewAt)return;
       setAreas(current => current.map(area => {
         const effective = effectiveStatus(area.declaredStatus, area.statusValidUntil);
         if (effective === area.status) return area;
@@ -212,7 +245,7 @@ export default function Home() {
     }, 5000);
 
     return () => window.clearInterval(timer);
-  }, []);
+  }, [viewAt]);
 
   useEffect(() => {
     let cancelled = false;
@@ -316,7 +349,7 @@ export default function Home() {
   };
 
   const connectionText =
-    connectionState === 'LIVE' ? 'Live Supabase status' :
+    connectionState === 'LIVE' ? planning?'Assured future NOTAM picture':'Live Supabase status' :
     connectionState === 'DEGRADED' ? 'Status connection degraded' :
     'Connecting to status feed';
 
@@ -340,21 +373,31 @@ export default function Home() {
         <section className="mapwrap">
           <div ref={mapContainerRef} id="map" className="map" />
           <div className="map-overlay">
+            <div className="status-card" style={{pointerEvents:'auto',minWidth:'min(330px,calc(100vw - 24px))'}}>
+              <div className="eyebrow">View UK airspace at</div>
+              <div style={{display:'flex',gap:'7px',marginTop:'8px',flexWrap:'wrap'}}>
+                <button type="button" onClick={()=>setViewAt(null)} style={{border:planning?'1px solid #385267':'1px solid #59d0f0',background:planning?'#10212d':'rgba(89,208,240,.14)',color:'#edf5fb',borderRadius:'7px',padding:'7px 9px',fontSize:'10px',fontWeight:850}}>Live now</button>
+                <button type="button" onClick={()=>setViewAt(new Date(Date.now()+60*60*1000).toISOString())} style={timeButton}>+1 hour</button>
+                <button type="button" onClick={()=>setViewAt(nextLocalTime(7,30).toISOString())} style={timeButton}>Next 07:30</button>
+                <button type="button" onClick={()=>setViewAt(nextLocalTime(18,40).toISOString())} style={timeButton}>Next 18:40</button>
+              </div>
+              <input aria-label="Planning date and local time" type="datetime-local" min={localInputValue(new Date())} max={planningWindow?.coverage_end?localInputValue(new Date(planningWindow.coverage_end)):undefined} value={viewAt?localInputValue(new Date(viewAt)):''} onChange={event=>setViewAt(event.target.value?new Date(event.target.value).toISOString():null)} style={{marginTop:'8px',width:'100%',border:'1px solid #385267',background:'#08131c',color:'#edf5fb',borderRadius:'7px',padding:'8px',fontSize:'11px',colorScheme:'dark'}}/>
+              <div style={{marginTop:'6px',fontSize:'9px',lineHeight:1.4,color:planning?'#a9e5f5':'#91a6b8'}}>{planning?`PLANNING VIEW · ${formatUtc(viewAt)}`:`LIVE VIEW · ${formatUtc(new Date().toISOString())}`}{planningWindow?.coverage_end?` · Coverage available to ${formatUtc(planningWindow.coverage_end)}`:''}</div>
+            </div>
             <div className="status-card">
-              <div className="eyebrow">Demonstration network</div>
+              <div className="eyebrow">{planning?'Future planning picture':'Demonstration network'}</div>
               <div className="status-row">
                 <span className="pulse" />
-                <strong>{areas.length} areas reporting</strong>
+                <strong>{areas.length} {planning?'areas promulgated':'areas reporting'}</strong>
                 <span className="sep">·</span>
                 <span className="muted">{connectionText}</span>
               </div>
             </div>
             <div className="legend">
-              <div className="legend-item"><span className="swatch red" />Active</div>
-              <div className="legend-item"><span className="swatch green" />Inactive</div>
-              <div className="legend-item"><span className="swatch amber" />Unverified</div>
-              <div className="legend-item"><span className="swatch grey" />No data</div>
+              {planning?<div className="legend-item"><span className="swatch" style={{background:'#59d0f0'}} />NOTAM-backed planned activity</div>:<><div className="legend-item"><span className="swatch red" />Active</div><div className="legend-item"><span className="swatch green" />Inactive</div><div className="legend-item"><span className="swatch amber" />Unverified</div><div className="legend-item"><span className="swatch grey" />No data</div></>}
             </div>
+            {planning&&<div style={{pointerEvents:'auto',maxWidth:'330px',borderLeft:'3px solid #59d0f0',background:'rgba(8,20,30,.94)',borderRadius:'0 9px 9px 0',padding:'10px 11px',fontSize:'10px',lineHeight:1.45,color:'#bfeaf5'}}>Planning view shows promulgated NOTAM activity at the selected time. It does not predict whether an operator will activate or stand down the area.</div>}
+            {planningError&&<div role="alert" style={{pointerEvents:'auto',maxWidth:'330px',borderLeft:'3px solid #ff5a64',background:'rgba(44,13,19,.95)',borderRadius:'0 9px 9px 0',padding:'10px 11px',fontSize:'10px',lineHeight:1.45,color:'#ffb3b8'}}>{planningError}</div>}
           </div>
         </section>
 
@@ -383,12 +426,14 @@ export default function Home() {
 
               <div className="live">
                 <div className="live-top">
-                  <div className="live-label">Effective DASS status</div>
+                  <div className="live-label">{planning?'Planning classification':'Effective DASS status'}</div>
                   <div className={`badge ${statusClass}`}>{selected.status}</div>
                 </div>
                 <div className="time">{formatUtcTime(selected.statusUpdatedAt)}</div>
                 <div className="small">
-                  {selected.status === 'UNVERIFIED'
+                  {planning
+                    ? `NOTAM-backed at ${formatUtc(viewAt)} · operator status cannot be forecast`
+                    : selected.status === 'UNVERIFIED'
                     ? selected.statusValidUntil
                       ? `Previous ${selected.declaredStatus} declaration expired ${formatUtc(selected.statusValidUntil)}`
                       : 'No currently valid operator declaration'
@@ -411,15 +456,15 @@ export default function Home() {
                 </div>
                 <div className="data"><span>Promulgated activity</span><strong>{selected.period}</strong></div>
                 <div className="data"><span>Vertical limits</span><strong>{selected.limits}</strong></div>
-                <div className="data"><span>Last declaration</span><strong>{selected.declaredStatus}</strong></div>
-                <div className="data"><span>Validity deadline</span><strong>{selected.statusValidUntil ? formatUtcTime(selected.statusValidUntil) : 'NONE'}</strong></div>
+                <div className="data"><span>{planning?'Current declaration (not forecast)':'Last declaration'}</span><strong>{selected.declaredStatus}</strong></div>
+                <div className="data"><span>{planning?'Selected planning time':'Validity deadline'}</span><strong>{planning?formatUtc(viewAt):selected.statusValidUntil ? formatUtcTime(selected.statusValidUntil) : 'NONE'}</strong></div>
                 <div className="data"><span>NOTAM assurance</span><strong>{selected.hasPublishedNotam ? `${selected.notamPhase} · ${selected.notamNumber ?? 'MATCHED'}` : 'NO PUBLISHED MATCH'}</strong></div>
                 <div className="data"><span>NOTAM validity</span><strong>{selected.notamValidFrom&&selected.notamValidUntil?`${formatUtc(selected.notamValidFrom)} – ${formatUtc(selected.notamValidUntil)}`:'—'}</strong></div>
                 <div className="data"><span>NOTAM feed</span><strong>{selected.notamFeedState}</strong></div>
               </div>
 
               <div className="notice">
-                <strong>Validity protection active.</strong> ACTIVE or INACTIVE is displayed only while an authorised operator declaration remains within its validity period. Missing or expired declarations are shown as UNVERIFIED. DASS does not cancel or amend the associated NOTAM.
+                <strong>{planning?'Planning limitation.':'Validity protection active.'}</strong> {planning?'This view represents promulgated NOTAM activity only. Future activation, early stand-down and tactical changes cannot be predicted and must not be inferred from this display.':'ACTIVE or INACTIVE is displayed only while an authorised operator declaration remains within its validity period. Missing or expired declarations are shown as UNVERIFIED. DASS does not cancel or amend the associated NOTAM.'}
               </div>
 
               <div className="source">
@@ -435,3 +480,5 @@ export default function Home() {
     </div>
   );
 }
+
+const timeButton:React.CSSProperties={border:'1px solid #385267',background:'#10212d',color:'#dceef7',borderRadius:'7px',padding:'7px 9px',fontSize:'10px',fontWeight:800,cursor:'pointer'};
