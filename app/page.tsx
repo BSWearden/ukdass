@@ -161,6 +161,7 @@ export default function Home() {
   const mapRef = useRef<LeafletMap | null>(null);
   const layersRef = useRef<Map<string, LeafletPolygon>>(new Map());
   const areasRef = useRef<Area[]>([]);
+  const [mapReady,setMapReady]=useState(false);
   const [areas, setAreas] = useState<Area[]>([]);
   const [selectedCode, setSelectedCode] = useState<string | null>(null);
   const [overlapCodes,setOverlapCodes]=useState<string[]>([]);
@@ -258,6 +259,7 @@ export default function Home() {
 
       const map = L.map(container, {zoomControl:false,attributionControl:true}).setView([54.05,-2.7],6);
       mapRef.current = map;
+      setMapReady(true);
       L.control.zoom({position:'bottomleft'}).addTo(map);
       L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
         maxZoom:12, attribution:'&copy; OpenStreetMap contributors'
@@ -294,6 +296,7 @@ export default function Home() {
 
     return () => {
       cancelled = true;
+      setMapReady(false);
       mapRef.current?.remove();
       mapRef.current = null;
       layersRef.current.clear();
@@ -341,7 +344,7 @@ export default function Home() {
     })();
 
     return () => { cancelled = true; };
-  }, [areas, selectedCode,overlapCodes]);
+  }, [areas, selectedCode,overlapCodes,mapReady]);
 
   const closePanel = () => {
     setSelectedCode(null);
