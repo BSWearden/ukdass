@@ -75,7 +75,7 @@ function effectiveStatus(declared: Status, validUntil: string | null): Status {
 function statusColor(status: Status) {
   if (status === 'ACTIVE') return '#ff5a64';
   if (status === 'INACTIVE') return '#4fd18b';
-  if (status === 'PLANNED') return '#59d0f0';
+  if (status === 'PLANNED') return '#c084fc';
   return '#ffba4a';
 }
 
@@ -403,7 +403,7 @@ export default function Home() {
               </div>
             </div>
             <div className="legend">
-              {planning?<div className="legend-item"><span className="swatch" style={{background:'#59d0f0'}} />NOTAM-backed planned activity</div>:<><div className="legend-item"><span className="swatch red" />Active</div><div className="legend-item"><span className="swatch green" />Inactive</div><div className="legend-item"><span className="swatch amber" />Unverified</div><div className="legend-item"><span className="swatch grey" />No data</div></>}
+              {planning?<div className="legend-item"><span className="swatch" style={{background:'#c084fc'}} />NOTAM-backed planned activity</div>:<><div className="legend-item"><span className="swatch red" />Active</div><div className="legend-item"><span className="swatch green" />Inactive</div><div className="legend-item"><span className="swatch amber" />Unverified</div><div className="legend-item"><span className="swatch grey" />No data</div></>}
             </div>
             {planning&&<div style={{pointerEvents:'auto',maxWidth:'330px',borderLeft:'3px solid #59d0f0',background:'rgba(8,20,30,.94)',borderRadius:'0 9px 9px 0',padding:'10px 11px',fontSize:'10px',lineHeight:1.45,color:'#bfeaf5'}}>Planning view shows promulgated NOTAM activity at the selected time. It does not predict whether an operator will activate or stand down the area.</div>}
             {planningError&&<div role="alert" style={{pointerEvents:'auto',maxWidth:'330px',borderLeft:'3px solid #ff5a64',background:'rgba(44,13,19,.95)',borderRadius:'0 9px 9px 0',padding:'10px 11px',fontSize:'10px',lineHeight:1.45,color:'#ffb3b8'}}>{planningError}</div>}
