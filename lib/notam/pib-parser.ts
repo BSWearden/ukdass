@@ -12,7 +12,7 @@ export type ParsedPib={
 }
 
 const MONTHS:Record<string,number>={JAN:0,FEB:1,MAR:2,APR:3,MAY:4,JUN:5,JUL:6,AUG:7,SEP:8,OCT:9,NOV:10,DEC:11}
-const PARSER_VERSION='1.0.0'
+const PARSER_VERSION='1.0.1'
 
 function compactUtc(value:string){
  const m=value.match(/^(\d{2})(\d{2})(\d{2})(\d{2})(\d{2})$/);if(!m)return null
@@ -25,6 +25,11 @@ function writtenUtc(value:string){
 function field(block:string,key:string,next:string){
  const match=block.match(new RegExp(`(?:^|\\s)${key}\\)\\s*([\\s\\S]*?)(?=\\s+(?:${next})\\)|$)`,'i'))
  return match?.[1]?.replace(/\s+/g,' ').trim()??''
+}
+function notamLimits(block:string){
+ const lower=field(block,'F','G')||block.match(/\bLOWER:\s*([^\n]+?)(?=\s+UPPER:|$)/i)?.[1]?.trim()||null
+ const upper=block.match(/(?:^|\n)G\)\s*([^\n]+)/i)?.[1]?.trim()??block.match(/\bUPPER:\s*([^\n]+)/i)?.[1]?.trim()??null
+ return {lower_limit:lower,upper_limit:upper}
 }
 function atUtc(day:Date,hhmm:string){return new Date(Date.UTC(day.getUTCFullYear(),day.getUTCMonth(),day.getUTCDate(),Number(hhmm.slice(0,2)),Number(hhmm.slice(2))))}
 function clipInterval(start:Date,end:Date,min:Date,max:Date){const a=new Date(Math.max(start.getTime(),min.getTime())),b=new Date(Math.min(end.getTime(),max.getTime()));return b>a?[a,b] as const:null}
@@ -71,6 +76,7 @@ export function parseNatsPib(text:string):ParsedPib{
   if(eventKind==='ACTIVATION'&&designators.length===0&&/\bEKD\d{3}[A-Z]*\b/i.test(eValue))eventKind='REFERENCE'
   const baseStart=compactUtc(bValue),baseEnd=cValue.toUpperCase()==='PERM'?null:compactUtc(cValue)
   const raw=block.slice(0,8000)
+  const limits=notamLimits(block)
 
   if(eventKind!=='ACTIVATION'){
    for(const designator of designators.length?designators:[null])items.push({notam_number:notamNumber,q_code:qCode,event_kind:eventKind,designator,valid_from:baseStart?.toISOString()??null,valid_until:baseEnd?.toISOString()??null,lower_limit:null,upper_limit:null,schedule_status:'NOT_APPLICABLE',included:false,review_note:eventKind==='DEACTIVATION'?'Deactivation record - not published as activation':eventKind==='TDA_INSTALLATION'?'TDA definition only - no activation asserted':'Danger Area reference only',raw_text:raw})
@@ -78,7 +84,7 @@ export function parseNatsPib(text:string):ParsedPib{
   }
   if(!baseStart||!baseEnd||designators.length===0){
    warnings.push(`${notamNumber}: incomplete activation dates or designator.`)
-   items.push({notam_number:notamNumber,q_code:qCode,event_kind:'ACTIVATION',designator:designators[0]??null,valid_from:baseStart?.toISOString()??null,valid_until:baseEnd?.toISOString()??null,lower_limit:null,upper_limit:null,schedule_status:'REVIEW_REQUIRED',included:false,review_note:'Incomplete activation dates or designator',raw_text:raw});continue
+   items.push({notam_number:notamNumber,q_code:qCode,event_kind:'ACTIVATION',designator:designators[0]??null,valid_from:baseStart?.toISOString()??null,valid_until:baseEnd?.toISOString()??null,...limits,schedule_status:'REVIEW_REQUIRED',included:false,review_note:'Incomplete activation dates or designator',raw_text:raw});continue
   }
 
   const explicit=[...eValue.toUpperCase().matchAll(/\b(EGD\d{3}[A-Z]*)\s+(\d{4})-(\d{4})\s+([^\s]+)-([^\s]+)/g)]
@@ -87,7 +93,7 @@ export function parseNatsPib(text:string):ParsedPib{
    continue
   }
   if(!dValue){
-   for(const designator of designators){const item=resolvedItem({notam_number:notamNumber,q_code:qCode,event_kind:'ACTIVATION',designator,lower_limit:field(block,'F','G')||null,upper_limit:block.match(/(?:^|\n)G\)\s*([^\n]+)/)?.[1]?.trim()??null,raw_text:raw},baseStart,baseEnd,coverageStart,coverageEnd);if(item)items.push(item)}
+   for(const designator of designators){const item=resolvedItem({notam_number:notamNumber,q_code:qCode,event_kind:'ACTIVATION',designator,...limits,raw_text:raw},baseStart,baseEnd,coverageStart,coverageEnd);if(item)items.push(item)}
    continue
   }
   const daily=dValue.match(/^\s*(\d{4})-(\d{4})\s*$/)
@@ -96,7 +102,7 @@ export function parseNatsPib(text:string):ParsedPib{
    const last=Math.min(baseEnd.getTime(),coverageEnd.getTime())
    for(let day=new Date(firstDay);day.getTime()<=last;day=new Date(day.getTime()+86400000)){
     let start=atUtc(day,daily[1]),end=atUtc(day,daily[2]);if(end<=start)end=new Date(end.getTime()+86400000)
-    for(const designator of designators){const clipped=clipInterval(start,end,new Date(Math.max(baseStart.getTime(),coverageStart.getTime())),new Date(Math.min(baseEnd.getTime(),coverageEnd.getTime())));if(clipped)items.push({notam_number:notamNumber,q_code:qCode,event_kind:'ACTIVATION',designator,valid_from:clipped[0].toISOString(),valid_until:clipped[1].toISOString(),lower_limit:null,upper_limit:null,schedule_status:'RESOLVED',included:true,review_note:null,raw_text:raw})}
+    for(const designator of designators){const clipped=clipInterval(start,end,new Date(Math.max(baseStart.getTime(),coverageStart.getTime())),new Date(Math.min(baseEnd.getTime(),coverageEnd.getTime())));if(clipped)items.push({notam_number:notamNumber,q_code:qCode,event_kind:'ACTIVATION',designator,valid_from:clipped[0].toISOString(),valid_until:clipped[1].toISOString(),...limits,schedule_status:'RESOLVED',included:true,review_note:null,raw_text:raw})}
    }
    continue
   }
@@ -107,12 +113,12 @@ export function parseNatsPib(text:string):ParsedPib{
    for(let day=new Date(firstDay);day.getTime()<=last;day=new Date(day.getTime()+86400000)){
     if(day.getUTCDate()<fromDay||day.getUTCDate()>toDay)continue
     let start=atUtc(day,datedOvernight[3]),end=atUtc(day,datedOvernight[4]);if(end<=start)end=new Date(end.getTime()+86400000)
-    for(const designator of designators){const clipped=clipInterval(start,end,new Date(Math.max(baseStart.getTime(),coverageStart.getTime())),new Date(Math.min(baseEnd.getTime(),coverageEnd.getTime())));if(clipped)items.push({notam_number:notamNumber,q_code:qCode,event_kind:'ACTIVATION',designator,valid_from:clipped[0].toISOString(),valid_until:clipped[1].toISOString(),lower_limit:null,upper_limit:null,schedule_status:'RESOLVED',included:true,review_note:null,raw_text:raw})}
+    for(const designator of designators){const clipped=clipInterval(start,end,new Date(Math.max(baseStart.getTime(),coverageStart.getTime())),new Date(Math.min(baseEnd.getTime(),coverageEnd.getTime())));if(clipped)items.push({notam_number:notamNumber,q_code:qCode,event_kind:'ACTIVATION',designator,valid_from:clipped[0].toISOString(),valid_until:clipped[1].toISOString(),...limits,schedule_status:'RESOLVED',included:true,review_note:null,raw_text:raw})}
    }
    continue
   }
   warnings.push(`${notamNumber}: schedule “${dValue}” requires review.`)
-  for(const designator of designators)items.push({notam_number:notamNumber,q_code:qCode,event_kind:'ACTIVATION',designator,valid_from:baseStart.toISOString(),valid_until:baseEnd.toISOString(),lower_limit:null,upper_limit:null,schedule_status:'REVIEW_REQUIRED',included:false,review_note:`Unsupported Item D schedule: ${dValue}`,raw_text:raw})
+  for(const designator of designators)items.push({notam_number:notamNumber,q_code:qCode,event_kind:'ACTIVATION',designator,valid_from:baseStart.toISOString(),valid_until:baseEnd.toISOString(),...limits,schedule_status:'REVIEW_REQUIRED',included:false,review_note:`Unsupported Item D schedule: ${dValue}`,raw_text:raw})
  }
  if(!items.some(item=>item.event_kind==='ACTIVATION'))warnings.push('No Danger Area activation records were found in the PIB.')
  return {manifest:{source_name:'NATS_PIB',pib_reference:pibReference,report_reference:reportReference,coverage_start:coverageStart.toISOString(),coverage_end:coverageEnd.toISOString(),firs,parser_version:PARSER_VERSION,warning_count:warnings.length},items,warnings}
