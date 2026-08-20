@@ -160,6 +160,7 @@ export default function Home() {
   const [overlapCodes,setOverlapCodes]=useState<string[]>([]);
   const [connectionState, setConnectionState] = useState<'CONNECTING'|'LIVE'|'DEGRADED'>('CONNECTING');
   const [viewAt,setViewAt]=useState<string|null>(null);
+  const [timeControlsOpen,setTimeControlsOpen]=useState(false);
   const [planningWindow,setPlanningWindow]=useState<PlanningWindow|null>(null);
   const [planningError,setPlanningError]=useState<string|null>(null);
   const planning=Boolean(viewAt);
@@ -367,15 +368,22 @@ export default function Home() {
         <section className="mapwrap">
           <div ref={mapContainerRef} id="map" className="map" />
           <div className="map-overlay">
-            <div className="status-card" style={{pointerEvents:'auto',minWidth:'min(330px,calc(100vw - 24px))'}}>
-              <div className="eyebrow">View UK airspace at</div>
+            {!timeControlsOpen&&<button type="button" aria-expanded="false" onClick={()=>setTimeControlsOpen(true)} style={viewTimeButton}>
+              <span aria-hidden="true" style={{fontSize:'14px'}}>◷</span>
+              <span>{planning?'Change view time':'View time'}</span>
+            </button>}
+            {timeControlsOpen&&<div className="status-card" style={{pointerEvents:'auto',minWidth:'min(330px,calc(100vw - 24px))'}}>
+              <div style={{display:'flex',alignItems:'center',justifyContent:'space-between',gap:'12px'}}>
+                <div className="eyebrow">View UK airspace at</div>
+                <button type="button" aria-label="Close time controls" onClick={()=>setTimeControlsOpen(false)} style={closeTimeButton}>×</button>
+              </div>
               <div style={{display:'flex',gap:'7px',marginTop:'8px',flexWrap:'wrap'}}>
                 <button type="button" onClick={()=>setViewAt(null)} style={{border:planning?'1px solid #385267':'1px solid #59d0f0',background:planning?'#10212d':'rgba(89,208,240,.14)',color:'#edf5fb',borderRadius:'7px',padding:'7px 9px',fontSize:'10px',fontWeight:850}}>Live now</button>
                 <button type="button" onClick={()=>setViewAt(new Date(Date.now()+60*60*1000).toISOString())} style={timeButton}>+1 hour</button>
               </div>
               <input aria-label="Planning date and local time" type="datetime-local" min={localInputValue(new Date())} max={planningWindow?.coverage_end?localInputValue(new Date(planningWindow.coverage_end)):undefined} value={viewAt?localInputValue(new Date(viewAt)):''} onChange={event=>setViewAt(event.target.value?new Date(event.target.value).toISOString():null)} style={{marginTop:'8px',width:'100%',border:'1px solid #385267',background:'#08131c',color:'#edf5fb',borderRadius:'7px',padding:'8px',fontSize:'11px',colorScheme:'dark'}}/>
               <div style={{marginTop:'6px',fontSize:'9px',lineHeight:1.4,color:planning?'#a9e5f5':'#91a6b8'}}>{planning?`PLANNING VIEW · ${formatUtc(viewAt)}`:`LIVE VIEW · ${formatUtc(new Date().toISOString())}`}{planningWindow?.coverage_end?` · Coverage available to ${formatUtc(planningWindow.coverage_end)}`:''}</div>
-            </div>
+            </div>}
             <div className="status-card">
               <div className="eyebrow">{planning?'Future planning picture':'Demonstration network'}</div>
               <div className="status-row">
@@ -474,3 +482,5 @@ export default function Home() {
 }
 
 const timeButton:React.CSSProperties={border:'1px solid #385267',background:'#10212d',color:'#dceef7',borderRadius:'7px',padding:'7px 9px',fontSize:'10px',fontWeight:800,cursor:'pointer'};
+const viewTimeButton:React.CSSProperties={pointerEvents:'auto',display:'inline-flex',alignItems:'center',gap:'7px',alignSelf:'flex-start',border:'1px solid #385267',background:'rgba(8,20,30,.94)',color:'#dceef7',borderRadius:'8px',padding:'8px 11px',fontSize:'10px',fontWeight:850,cursor:'pointer',boxShadow:'0 5px 18px rgba(0,0,0,.22)'};
+const closeTimeButton:React.CSSProperties={display:'grid',placeItems:'center',width:'28px',height:'28px',flex:'0 0 28px',border:'1px solid #385267',background:'#10212d',color:'#dceef7',borderRadius:'7px',fontSize:'18px',lineHeight:1,cursor:'pointer'};
