@@ -118,6 +118,12 @@ function formatUtcTime(value: string | null) {
   }).format(new Date(value)) + 'Z';
 }
 
+function formatActivationMethod(value:string){
+  const normalized=value.trim().replace(/\.$/,'');
+  if(/^activated by notam$/i.test(normalized))return 'By NOTAM';
+  return normalized||'—';
+}
+
 function databaseArea(row: DbArea,planning:boolean): Area {
   const effective = planning?'PLANNED':row.effective_status;
   return {
@@ -350,7 +356,7 @@ export default function Home() {
 
   return (
     <div className="app">
-      <div className="demo-banner">DASS ALPHA 0.9.0 · DEMONSTRATION ONLY · NOT FOR OPERATIONAL USE OR FLIGHT PLANNING</div>
+      <div className="demo-banner">DASS ALPHA 1.4.1 · DEMONSTRATION ONLY · NOT FOR OPERATIONAL USE OR FLIGHT PLANNING</div>
 
       <header>
         <div className="brand">
@@ -454,7 +460,7 @@ export default function Home() {
                       : '—'}
                   </strong>
                 </div>
-                <div className="data"><span>Promulgated activity</span><strong>{selected.period}</strong></div>
+                <div className="data"><span>Activation method</span><strong>{formatActivationMethod(selected.period)}</strong></div>
                 <div className="data"><span>Vertical limits</span><strong>{selected.limits}</strong></div>
                 <div className="data"><span>{planning?'Current declaration (not forecast)':'Last declaration'}</span><strong>{selected.declaredStatus}</strong></div>
                 <div className="data"><span>{planning?'Selected planning time':'Validity deadline'}</span><strong>{planning?formatUtc(viewAt):selected.statusValidUntil ? formatUtcTime(selected.statusValidUntil) : 'NONE'}</strong></div>
