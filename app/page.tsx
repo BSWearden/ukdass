@@ -84,12 +84,6 @@ function localInputValue(value:Date){
   return new Date(value.getTime()-offset).toISOString().slice(0,16);
 }
 
-function nextLocalTime(hour:number,minute:number){
-  const value=new Date();value.setHours(hour,minute,0,0);
-  if(value.getTime()<=Date.now())value.setDate(value.getDate()+1);
-  return value;
-}
-
 function pointOnSegment(point:[number,number],a:[number,number],b:[number,number]){
   const [py,px]=point,[ay,ax]=a,[by,bx]=b;
   const cross=(px-ax)*(by-ay)-(py-ay)*(bx-ax);
@@ -378,8 +372,6 @@ export default function Home() {
               <div style={{display:'flex',gap:'7px',marginTop:'8px',flexWrap:'wrap'}}>
                 <button type="button" onClick={()=>setViewAt(null)} style={{border:planning?'1px solid #385267':'1px solid #59d0f0',background:planning?'#10212d':'rgba(89,208,240,.14)',color:'#edf5fb',borderRadius:'7px',padding:'7px 9px',fontSize:'10px',fontWeight:850}}>Live now</button>
                 <button type="button" onClick={()=>setViewAt(new Date(Date.now()+60*60*1000).toISOString())} style={timeButton}>+1 hour</button>
-                <button type="button" onClick={()=>setViewAt(nextLocalTime(7,30).toISOString())} style={timeButton}>Next 07:30</button>
-                <button type="button" onClick={()=>setViewAt(nextLocalTime(18,40).toISOString())} style={timeButton}>Next 18:40</button>
               </div>
               <input aria-label="Planning date and local time" type="datetime-local" min={localInputValue(new Date())} max={planningWindow?.coverage_end?localInputValue(new Date(planningWindow.coverage_end)):undefined} value={viewAt?localInputValue(new Date(viewAt)):''} onChange={event=>setViewAt(event.target.value?new Date(event.target.value).toISOString():null)} style={{marginTop:'8px',width:'100%',border:'1px solid #385267',background:'#08131c',color:'#edf5fb',borderRadius:'7px',padding:'8px',fontSize:'11px',colorScheme:'dark'}}/>
               <div style={{marginTop:'6px',fontSize:'9px',lineHeight:1.4,color:planning?'#a9e5f5':'#91a6b8'}}>{planning?`PLANNING VIEW · ${formatUtc(viewAt)}`:`LIVE VIEW · ${formatUtc(new Date().toISOString())}`}{planningWindow?.coverage_end?` · Coverage available to ${formatUtc(planningWindow.coverage_end)}`:''}</div>
